@@ -1,0 +1,36 @@
+{
+  "name": "opengr8on-node",
+  "version": "0.1.0",
+  "description": "CLU protocol over UDP - Node.js port of opengr8on lib/common",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "bin": {
+    "tfbus-monitor": "./bin/tfbus-monitor.js",
+    "tfbus-repl": "./bin/tfbus-repl.js",
+    "transcribe-modules": "./bin/transcribe-modules.js",
+    "vclu": "./bin/vclu.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "build": "tsc",
+    "prune": "rm -rf dist node_modules",
+    "test": "node --test --test-timeout=10000 'test/**/*.test.js'"
+  },
+  "dependencies": {
+    "adm-zip": "0.6.1",
+    "fast-xml-parser": "5.11.2",
+    "serialport": "^13.0.0",
+    "mqtt": "^5.10.4",
+    "wasmoon": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^6.0.3"
+  }
+}

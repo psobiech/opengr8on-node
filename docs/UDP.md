@@ -28,7 +28,7 @@ All CLU network communication uses **port 1234/UDP**, AES-128-CBC encrypted. See
 
 | Phase | Encrypt with | IV source |
 |-------|-------------|-----------|
-| Discovery broadcast | Factory GRENTON_KEY | OWN_IV — 16 random bytes, caller-generated |
+| Discovery broadcast | Factory GRENTON_KEY | `DEFAULT_BROADCAST_IV` — fixed 16-byte constant |
 | Discovery response | Factory GRENTON_KEY | OWN_IV from the matching discovery request |
 | Post-`req_set_key` unicast | Per-device CLU key | Exchanged during `req_set_key` |
 
@@ -84,7 +84,7 @@ Sent as UDP broadcast to `255.255.255.255:1234`. All reachable CLUs respond.
  [..]      host_ip         ASCII dotted-decimal (e.g. "10.0.0.1")
 ```
 
-Outer AES envelope uses `GRENTON_KEY` + `OWN_IV`.
+Outer AES envelope uses `GRENTON_KEY` + `DEFAULT_BROADCAST_IV` (fixed constant — not OWN_IV). OWN_IV is embedded inside the plaintext and used as the outer IV only for the response.
 
 **Response plaintext layout**:
 
@@ -112,7 +112,7 @@ for i in [1, 30):
     result[i] = ((a + 1) * (b + 1)) & 0xFF
 ```
 
-Caller re-derives `hash(randomBytes)` using the device private key and compares with `encrypted` in the response. Match → `CipherType.PROJECT` (CLU has project key); mismatch or no private key → `CipherType.NONE`.
+Caller re-derives `hash(randomBytes)` using the device private key and compares with `encrypted` in the response. Match → `CipherType.PROJECT` (CLU has project key); mismatch → `CipherType.NONE`; no private key provided → `CipherType.UNKNOWN`.
 
 ---
 

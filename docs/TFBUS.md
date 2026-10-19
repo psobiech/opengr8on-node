@@ -20,7 +20,7 @@ TFBUS operates across one transport context:
 |-------|-----------|----------------|---------|
 | RS485 Direct | UART | `{0xAA, addr, type, payload, XOR}` | Discovery, reset, address assignment, polling, module control |
 
-The internal TCP/UDP queue format is not exposed on the wire. All RS485 communication uses the standard framing described below.
+All RS485 communication uses the standard framing described below.
 
 ---
 
@@ -191,7 +191,7 @@ Parser detects frame length by CRC-scanning lengths 5–32.
 | `0x05` | SEEK_BCAST | `hw_type(u8) fw_type(u8) name[15] null` |
 | `0x06` | RGBW_SET | `W(u8) R(u8) G(u8) B(u8) channel_idx(u8)` |
 | `0x08` | SEEK_RESPONSE | `hw_type(u8) fw_type(u8) name[15] null` |
-| `0x0A` | PRINT_TEXT | `x(u8) y(u8) font(u8) text[16] null 2×0x00` |
+| `0x0A` | PRINT_TEXT | `x(u8) y(u8) font(u8) text[16] 2×0x00` |
 | `0x0B` | SET_FEATURE | `feature_id(u8)` |
 | `0x0E` | EXEC_METHOD | `method_id(u8)` |
 | `0x0F` | BUZZER_BEEP | `freq(u16LE) dur(u16LE) vol(u16LE) reserved(u8) + 14×0x00` |
@@ -202,15 +202,6 @@ Parser detects frame length by CRC-scanning lengths 5–32.
 **BUZZER_BEEP parameter ranges**: freq 30–5700 Hz, duration 1–2000 ms, volume 0–16 (u16 LE), reserved=0.
 
 **PRINT_TEXT**: text field is exactly 16 bytes. Always follow with DRAW (0x19) to commit display.
-
-**Internal queue vs wire format**:
-
-| Field | RS485 wire | Internal TCP/UDP queue |
-|-------|-----------|----------------------|
-| Header | `AA dest 0x31` | `addr 0x31` |
-| Length field | absent | `payload_len` byte |
-| Gap byte | absent | `0x00` |
-| Terminator | XOR CRC | length-delimited |
 
 ---
 
@@ -530,8 +521,6 @@ Module identity tuple: `hwType:fwType:fwApiVer`. Multiple fwTypes can share one 
 
 ## Encryption
 
-Default factory key for CLU communications (AES/CBC):
-- Key: `<16-byte AES key>`
-- IV: `<16-byte IV>`
+RS485 frames are **not encrypted** — plaintext with XOR checksum only.
 
-The provisioning frame (`0xFB`) includes 16 bytes of per-device key material in the payload. Per-device key derivation: XOR the factory key with the device's private key.
+The PROVISION frame (`0xFB`) distributes per-module key material over RS485 (see Frame Types table for payload layout).

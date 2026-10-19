@@ -14,25 +14,27 @@ Two independent communication planes:
 ```
   ┌──────────────────────────────────────────────────────────────────────────────┐
   │                              IP NETWORK                                      │
-  │                                                                              │
-  │  ┌────────────┐  UDP 1234  ┌──────────┐  UDP 1234  ┌──────────┐             │
-  │  │  OM / Tool │◄──────────►│  CLU  A  │◄──────────►│  CLU  B  │             │
-  │  └────────────┘  AES/CBC   └──────┬───┘  AES/CBC   └──────┬───┘             │
-  │        │                          │                         │                │
-  │        │         UDP 1234         │                         │                │
-  │        └──────────────────►┌──────┴────┐   UDP 1234  ┌─────┴──────┐        │
-  │                             │  GATE     │◄────────────►│  GATE      │        │
-  │                             │ (Modbus)  │  AES/CBC    │  (HTTP)    │        │
-  │                             └──────┬────┘             └────────────┘        │
-  └───────────────────────────────┬────┼────────────────────────────────────────┘
-                                  │    │ Modbus RTU (RS485)
-                       RS485      │    └──────────────────────────┐
-           ┌───────────┴────────┐ │                   ┌──────────┴──────────┐
-           │ TFBUS modules (A)  │ │                   │ External Modbus     │
-           │  relay  dimmer ...  │ │                   │  devices (RS485)    │
-           └────────────────────┘ │ RS485             └─────────────────────┘
-                       ┌──────────┴────────┐
-                       │ TFBUS modules (B)  │
+  │                  TELNET/23                                                   │
+  │                  TFTP/69                                                     │
+  │  ┌────────────┐  UDP/1234  ┌──────────┐      UDP/1234     ┌──────────┐       │           ┌────────────────────┐ 
+  │  │  OM / Tool │◄──────────►│  CLU  A  │◄─────────────────►│  CLU  B  │◄──────│──────────►│ TFBUS modules (B)  │
+  │  └────────────┘  AES/CBC   └──┬───┬───┘      AES/CBC      └─┬────┬───┘       │           │  relay  dimmer ... │
+  │        │                      │   │                         │    │           │           └────────────────────┘
+  │        │         TFTP/69      │   │                         │    │           │
+  │        │         UDP/1234     │   │      ┌──────────────────┘    │           │
+  │        └──────────────────────│─►┌┴──────┴───┐   UDP/1234  ┌─────┴──────┐    │
+  │                               │  │  GATE     │◄───────────►│  GATE      │    │
+  │                               │  │ (Modbus)  │  AES/CBC    │  (HTTP)    │    │
+  │                               │  └──────┬────┘             └────────────┘    │
+  └───────────────────────────────│─────────┼────────────────────────────────────┘
+                                  │         │ Modbus RTU (RS485)
+                                  │         └──────────────────────────┐
+                                  │                         ┌──────────┴──────────┐
+                                  │                         │   External Modbus   │
+                                  │                         │   devices (RS485)   │
+                                  │ RS485                   └─────────────────────┘
+                       ┌──────────┴─────────┐
+                       │ TFBUS modules (A)  │
                        │  roller  panel ... │
                        └────────────────────┘
 ```
@@ -259,14 +261,14 @@ Both emit the same type byte on the wire.
 
 ## Encryption
 
-Both planes use AES-128-CBC. UDP encryption wraps the entire plaintext packet. TFBUS provisioning (`0xFB`) distributes per-module key material over RS485.
+UDP traffic uses AES-128-CBC. RS485 (TFBUS) frames are plaintext — no encryption on the wire. The PROVISION frame (`0xFB`) distributes per-module key material over RS485 as raw bytes.
 
-| Plane | Algorithm | Default key source |
-|-------|-----------|-------------------|
-| UDP | AES-128-CBC | Factory key XOR device private key |
-| TFBUS provision | AES-128-CBC (payload only) | Factory key (per-device derived) |
+| Plane | Algorithm | Notes |
+|-------|-----------|-------|
+| UDP (port 1234) | AES-128-CBC | Wraps entire plaintext packet |
+| RS485 / TFBUS | none | XOR checksum only |
 
-Per-device key derivation: `device_key = factory_key XOR private_key_from_sticker`
+Per-device key derivation uses `DEFAULT_IV` XOR'd with the device private key (non-uniform: second 8 bytes use reversed index). See [UDP.md](./UDP.md) for full derivation algorithm and factory constants.
 
 ---
 

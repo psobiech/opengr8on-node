@@ -251,14 +251,14 @@ Obie ścieżki emitują ten sam bajt type na magistrali.
 
 ## Szyfrowanie
 
-Obie płaszczyzny używają AES-128-CBC. Szyfrowanie UDP opakowuje cały pakiet z tekstem jawnym. Provisioning TFBUS (`0xFB`) dystrybuuje per-modułowy materiał klucza przez RS485.
+Ruch UDP używa AES-128-CBC. Ramki RS485 (TFBUS) są plaintext — brak szyfrowania na przewodzie. Ramka PROVISION (`0xFB`) dystrybuuje per-modułowy materiał klucza przez RS485 jako surowe bajty.
 
-| Płaszczyzna | Algorytm | Domyślne źródło klucza |
-|-------------|----------|------------------------|
-| UDP | AES-128-CBC | Klucz fabryczny XOR klucz prywatny urządzenia |
-| Provisioning TFBUS | AES-128-CBC (tylko ładunek) | Klucz fabryczny (wyprowadzany per-urządzenie) |
+| Płaszczyzna | Algorytm | Uwagi |
+|-------------|----------|-------|
+| UDP (port 1234) | AES-128-CBC | Opakowuje cały pakiet z tekstem jawnym |
+| RS485 / TFBUS | brak | Tylko suma kontrolna XOR |
 
-Wyprowadzanie klucza per-urządzenie: `klucz_urządzenia = klucz_fabryczny XOR klucz_prywatny_z_naklejki`
+Wyprowadzanie klucza per-urządzenie używa `DEFAULT_IV` XOR-owanego z kluczem prywatnym urządzenia (niejednorodnie: druga połowa 8 bajtów używa odwróconego indeksu). Pełny algorytm derywacji i stałe fabryczne: [UDP.pl.md](./UDP.pl.md).
 
 ---
 

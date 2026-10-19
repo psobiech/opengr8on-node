@@ -20,7 +20,7 @@ TFBUS działa w jednym kontekście transportowym:
 |---------|-----------|----------------|-----|
 | RS485 Direct | UART | `{0xAA, addr, type, payload, XOR}` | Wykrywanie, reset, przypisywanie adresów, polling, sterowanie modułami |
 
-Wewnętrzny format kolejki TCP/UDP nie jest widoczny na magistrali. Cała komunikacja RS485 używa standardowego ramkowania opisanego poniżej.
+Cała komunikacja RS485 używa standardowego ramkowania opisanego poniżej.
 
 ---
 
@@ -191,7 +191,7 @@ Parser wykrywa długość ramki przez skanowanie CRC dla długości 5–32.
 | `0x05` | SEEK_BCAST | `hw_type(u8) fw_type(u8) name[15] null` |
 | `0x06` | RGBW_SET | `W(u8) R(u8) G(u8) B(u8) channel_idx(u8)` |
 | `0x08` | SEEK_RESPONSE | `hw_type(u8) fw_type(u8) name[15] null` |
-| `0x0A` | PRINT_TEXT | `x(u8) y(u8) font(u8) text[16] null 2×0x00` |
+| `0x0A` | PRINT_TEXT | `x(u8) y(u8) font(u8) text[16] 2×0x00` |
 | `0x0B` | SET_FEATURE | `feature_id(u8)` |
 | `0x0E` | EXEC_METHOD | `method_id(u8)` |
 | `0x0F` | BUZZER_BEEP | `freq(u16LE) dur(u16LE) vol(u16LE) reserved(u8) + 14×0x00` |
@@ -202,15 +202,6 @@ Parser wykrywa długość ramki przez skanowanie CRC dla długości 5–32.
 **Zakresy parametrów BUZZER_BEEP**: freq 30–5700 Hz, czas trwania 1–2000 ms, głośność 0–16 (u16 LE), reserved=0.
 
 **PRINT_TEXT**: pole tekstu ma dokładnie 16 bajtów. Po PRINT_TEXT zawsze należy wysłać DRAW (0x19) aby zatwierdzić wyświetlacz.
-
-**Format kolejki wewnętrznej vs. magistrala**:
-
-| Pole | Magistrala RS485 | Wewnętrzna kolejka TCP/UDP |
-|------|-----------------|---------------------------|
-| Nagłówek | `AA dest 0x31` | `addr 0x31` |
-| Pole długości | brak | bajt `payload_len` |
-| Bajt odstępu | brak | `0x00` |
-| Terminator | XOR CRC | ograniczony długością |
 
 ---
 
@@ -530,8 +521,6 @@ Krotka tożsamości modułu: `hwType:fwType:fwApiVer`. Wiele wartości fwType mo
 
 ## Szyfrowanie
 
-Domyślny klucz fabryczny do komunikacji CLU (AES/CBC):
-- Klucz: `<16-bajtowy klucz AES>`
-- IV: `<16-bajtowy IV>`
+Ramki RS485 **nie są szyfrowane** — przesyłane są jako plaintext z sumą kontrolną XOR.
 
-Ramka provisioningu (`0xFB`) zawiera 16 bajtów materiału klucza per-urządzenie w ładunku. Derywacja klucza per-urządzenie: XOR klucza fabrycznego z kluczem prywatnym urządzenia.
+Ramka PROVISION (`0xFB`) dystrybuuje per-modułowy materiał klucza przez RS485 (układ ładunku: patrz tabela Frame Types).

@@ -20,11 +20,11 @@ Ten projekt zawiera:
 
 | Dokument | Opis |
 |----------|------|
-| [docs/COMMUNICATION.md](docs/COMMUNICATION.md) | Przegląd systemu: CLU, GATE, UDP, TFBUS, Lua, interfejsy urządzeń |
-| [docs/UDP.md](docs/UDP.md) | Protokół UDP: układy pakietów, wyprowadzanie kluczy, hash odkrywania, formaty per komenda |
-| [docs/TFBUS.md](docs/TFBUS.md) | Protokół TFBUS 2.0: format ramek, typy TLV, sekwencje inicjalizacji modułów |
+| [docs/COMMUNICATION.pl.md](docs/COMMUNICATION.pl.md) | Przegląd systemu: CLU, GATE, UDP, TFBUS, Lua, interfejsy urządzeń |
+| [docs/UDP.pl.md](docs/UDP.pl.md) | Protokół UDP: układy pakietów, wyprowadzanie kluczy, hash odkrywania, formaty per komenda |
+| [docs/TFBUS.pl.md](docs/TFBUS.pl.md) | Protokół TFBUS 2.0: format ramki, typy TLV, sekwencje inicjalizacji modułów |
 
-Tłumaczenia polskie: [COMMUNICATION.pl.md](docs/COMMUNICATION.pl.md) · [UDP.pl.md](docs/UDP.pl.md) · [TFBUS.pl.md](docs/TFBUS.pl.md)
+Wersje angielskie: [COMMUNICATION.md](docs/COMMUNICATION.md) · [UDP.md](docs/UDP.md) · [TFBUS.md](docs/TFBUS.md)
 
 ### Wymagania sprzętowe
 

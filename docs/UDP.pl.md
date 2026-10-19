@@ -28,7 +28,7 @@ Cała komunikacja sieciowa CLU używa **portu 1234/UDP**, szyfrowanego AES-128-C
 
 | Faza | Szyfruj przy użyciu | Źródło IV |
 |------|---------------------|-----------|
-| Broadcast odkrywania | Fabryczny GRENTON_KEY | OWN_IV — 16 losowych bajtów generowanych przez wywołującego |
+| Broadcast odkrywania | Fabryczny GRENTON_KEY | `DEFAULT_BROADCAST_IV` — stała 16-bajtowa stała |
 | Odpowiedź na odkrywanie | Fabryczny GRENTON_KEY | OWN_IV z pasującego żądania odkrywania |
 | Unicast po `req_set_key` | Klucz per-urządzenie CLU | Wymieniony podczas `req_set_key` |
 
@@ -84,7 +84,7 @@ Wysyłane jako broadcast UDP na `255.255.255.255:1234`. Wszystkie osiągalne CLU
  [..]      host_ip         ASCII z kropkami (np. "10.0.0.1")
 ```
 
-Zewnętrzna koperta AES używa `GRENTON_KEY` + `OWN_IV`.
+Zewnętrzna koperta AES używa `GRENTON_KEY` + `DEFAULT_BROADCAST_IV` (stała stała — nie OWN_IV). OWN_IV jest osadzony wewnątrz tekstu jawnego i używany jako zewnętrzny IV tylko dla odpowiedzi.
 
 **Układ tekstu jawnego odpowiedzi**:
 
@@ -112,7 +112,7 @@ dla i w [1, 30):
     result[i] = ((a + 1) * (b + 1)) & 0xFF
 ```
 
-Wywołujący ponownie oblicza `hash(randomBytes)` używając klucza prywatnego urządzenia i porównuje z `encrypted` w odpowiedzi. Zgodność → `CipherType.PROJECT` (CLU ma klucz projektu); niezgodność lub brak klucza prywatnego → `CipherType.NONE`.
+Wywołujący ponownie oblicza `hash(randomBytes)` używając klucza prywatnego urządzenia i porównuje z `encrypted` w odpowiedzi. Zgodność → `CipherType.PROJECT` (CLU ma klucz projektu); niezgodność → `CipherType.NONE`; brak dostarczonego klucza prywatnego → `CipherType.UNKNOWN`.
 
 ---
 

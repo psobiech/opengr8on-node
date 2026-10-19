@@ -20,7 +20,8 @@
   "scripts": {
     "build": "tsc",
     "prune": "rm -rf dist node_modules",
-    "test": "node --test --test-timeout=10000 'test/**/*.test.js'"
+    "test": "node --test --test-timeout=10000 'test/CipherKey.test.js' 'test/commands/**/*.test.js' 'test/device/**/*.test.js' 'test/parsers/CLUDataTypeEnum.test.js' 'test/parsers/enums.test.js' 'test/tfbus/**/*.test.js' 'test/util/**/*.test.js' 'test/vclu/**/*.test.js'",
+    "test:full": "node --test --test-timeout=10000 'test/**/*.test.js'"
   },
   "dependencies": {
     "adm-zip": "0.6.1",

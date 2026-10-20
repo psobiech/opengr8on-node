@@ -1,14 +1,16 @@
 # TFBUS — SMART_PANEL_FM_4 Module
 
-**hwType=3, fwType=3** — 4-button touch panel with RGB LED feedback
+**hwType=3, fwType=3, fwApiVer=4** — 4-button panel with OLED display, gesture, proximity, temperature, and light sensors.
 
-Objects: `PANEL_BUTTON` (class=30) ×16, `PANEL` (class=29), `PANELSENSTEMP`, `PANELSENSLIGHT`, `PANEL_PAGE` (class=19) ×4
+Objects: `PANEL` (class=29) ×1, `PANEL_BUTTON` (class=30) ×16, `PANELSENSTEMP` (class=20) ×1, `PANELSENSLIGHT` (class=21) ×1, `PANEL_PAGE` (class=19) ×4
 
 SN prefix: `0x0f05`. Does not respond to VERSION_QUERY.
 
 ---
 
 ## LED_CMD Frame (type 0x18)
+
+Sent by CLU to control per-button LEDs.
 
 ```
 AA  dest  0x18  btn_mask  0x00  cmd_byte  XOR_crc     (7 bytes total)
@@ -28,34 +30,228 @@ AA  dest  0x18  btn_mask  0x00  cmd_byte  XOR_crc     (7 bytes total)
 
 Frame length: 7 bytes. Parser detects by CRC-scanning lengths 7–15.
 
-Wire examples (dest=0x14, button 4 = bit 3 = mask 0x08):
+Wire examples (dest=`<addr>`, button 1 = bit 0 = mask 0x01, button 4 = bit 3 = mask 0x08):
 ```
-ShowOK          aa 14 18 01 00 00 a7   (btn1, mask=0x01)
-ShowError       aa 14 18 08 00 01 af   (btn4, mask=0x08)
-LedSwitchOn     aa 14 18 08 00 02 ac
-LedSwitchOff    aa 14 18 08 00 04 aa
-RedLedSwitchOn  aa 14 18 08 00 10 be
-```
-
----
-
-## STATUS_POLL Response — Idle Bitmask (13 bytes, non-TLV)
-
-```
-bytes[0–1]   LE u16  button bitmask: bit N = instance N active
-bytes[2–3]   LE u16  edge bitmask: non-zero on press start, 0 on press end
-bytes[4–5]   LE u16  PANELSENSLIGHT (ambient light ×100)
-bytes[6–7]   LE u16  unknown
-bytes[8–11]          zeros
-bytes[12]            0x02 flag
+ShowOK          aa <addr> 18 01 00 00 <crc>   (btn1, mask=0x01)
+ShowError       aa <addr> 18 08 00 01 <crc>   (btn4, mask=0x08)
+LedSwitchOn     aa <addr> 18 08 00 02 <crc>
+LedSwitchOff    aa <addr> 18 08 00 04 <crc>
+RedLedSwitchOn  aa <addr> 18 08 00 10 <crc>
 ```
 
 ---
 
-## Button Identity Encoding
+## STATUS_POLL Response
 
-See TFBUS.md § Button Identity Encoding for full event table.
+Unlike LED-type modules, SMART_PANEL_FM_4 **always returns a data frame** — never bare ACK (`AA 00 01 AB`). The minimum response is a 1-record TLV frame.
 
-**Button numbering**: row-major order — top-left → top-right → bottom-left → bottom-right = indices 0→1→2→3.
+Frame format:
+```
+AA 00 <plen> <count> [TLV records...] <CRC>
+```
 
-Multi-CLU note: secondary CLU (TCP-notified) receives type=0x07 only — all buttons appear identical. Button identity (type=0x08) only available to primary CLU owning the RS485 bus.
+Sub-record layout: `[type(1)] [len(1)] [meta(1)] [data(len)]`
+
+### TLV Records Observed
+
+| type | len | meta | Description |
+|------|-----|------|-------------|
+| 0x06 | 1   | 0x01 | Baseline status byte — always present; data=0x00 when idle |
+| 0x02 | 2   | 0x10 | Temperature — LE int16, units 0.01 °C (panel surface, ~1–2 °C above ambient due to self-heating) |
+| 0x07 | 2   | 0x10 | Light sensor — LE int16 raw ADC (CLU maps to 0–100 %) |
+
+### Baseline Frame (1 record, always present)
+
+```
+aa 00 06 01  06 01 01 00  ab
+│  │  │  │   │  │  │  │
+│  │  │  │   │  │  │  └── data = 0x00 (idle)
+│  │  │  │   │  │  └───── meta = 0x01
+│  │  │  │   │  └──────── len = 1
+│  │  │  │   └─────────── type = 0x06 (baseline status)
+│  │  │  └─────────────── count = 1 record
+│  │  └────────────────── plen = 6
+│  └───────────────────── addr = 0x00 (module → CLU)
+└──────────────────────── 0xAA start
+```
+
+### Extended Frame (2 records, periodic ~every 1.25 s)
+
+Temperature reading (`type=0x02`):
+```
+aa 00 0b 02  06 01 01 00  02 02 10 24 09  98
+                          │  │  │  └─┘
+                          │  │  │   └── LE int16 = 0x0924 = 2340 → 23.40 °C raw
+                          │  │  └────── meta = 0x10
+                          │  └──────── len = 2
+                          └─────────── type = 0x02 (temperature)
+```
+
+Light reading (`type=0x07`), follows temperature by ~113 ms:
+```
+aa 00 0b 02  06 01 01 00  07 02 10 dc 00  6c
+                          │  │  │  └─┘
+                          │  │  │   └── LE int16 = 0x00DC = 220 raw ADC
+                          │  │  └────── meta = 0x10
+                          │  └──────── len = 2
+                          └─────────── type = 0x07 (light)
+```
+
+### Sensor Periodicity
+
+The module self-samples on a ~1.25 s schedule regardless of CLU commands. Each cycle: one temperature frame, then one light frame (one STATUS_POLL cycle = ~113 ms apart). Between cycles the module sends only the 1-record baseline frame.
+
+### Observed Wire Values
+
+| TLV type | data (hex) | LE int16 | CLU value | Notes |
+|----------|-----------|----------|-----------|-------|
+| 0x02 | `2409` | 2340 | 21.70 °C | Panel surface; ~1.7 °C above ambient |
+| 0x07 | `dc00` | 220 | 1.50 % | Light sensor; raw-to-% conversion non-linear |
+| 0x07 | `da00` | 218 | — | Natural light sensor variation |
+
+---
+
+## CLU Interface
+
+### PANEL_BUTTON (class=30, ×16)
+
+#### Feature Indices (get/set)
+
+| Index | Feature | r/w | Default | Notes |
+|-------|---------|-----|---------|-------|
+| 0 | Value | r/o | — | 0 or 1 (button state) |
+| 1 | Mode | r/w | 0 | 0=Monostable, 1=Bistable, 2=Locked |
+| 2 | HoldDelay | r/w | 1000 ms | 100–5000 ms |
+| 3 | HoldInterval | r/w | 100 ms | 100–2000 ms |
+| 4 | Label | r/w | "" | string (max 15 chars) |
+| 5 | IconA | r/w | "" | BMP filename; prefix `~` for negative |
+| 6 | IconB | r/w | "" | BMP filename for bistable ON state |
+
+#### Methods (execute)
+
+| Index | Name | set= | Args |
+|-------|------|------|------|
+| 0 | ShowOK | 0 | — |
+| 0 | ShowError | 1 | — |
+| 1 | LedSwitchOn | 2 | — |
+| 2 | RedLedSwitchOn | 16 | — |
+| 2 | LedSwitchOff | 4 | — |
+| 3 | SetLabel | — | text |
+| 4 | SetIconA | — | filename |
+| 5 | SetIconB | — | filename |
+
+set/index methods: SetMode(set=1), SetHoldDelay(set=2), SetHoldInterval(set=3)
+
+#### Events
+
+| Address | Name |
+|---------|------|
+| 0 | OnChange |
+| 1 | OnSwitchOn |
+| 2 | OnSwitchOff |
+| 3 | OnShortPress |
+| 4 | OnLongPress |
+| 5 | OnHold |
+| 6 | OnClick |
+
+---
+
+### PANEL (class=29, ×1)
+
+#### Feature Indices (get/set)
+
+| Index | Feature | r/w | Default | Notes |
+|-------|---------|-----|---------|-------|
+| 4 | GestureIconUp | r/w | — | |
+| 5 | GestureIconDown | r/w | — | |
+| 6 | GestureIconLeft | r/w | — | |
+| 7 | GestureIconRight | r/w | — | |
+| 10 | ProximitySens | r/w | 5 | 2–100, lower=more sensitive |
+| 11 | ProximityTimeout | r/w | 5000 ms | 1000–60000 ms |
+| 12 | ProximityValue | r/o | — | raw dimensionless ADC |
+| 13 | BuzzerValue | r/w | 1 | 0=Off, 1=On |
+| 15 | GestureMode | r/w | 3 | 0=Off, 1=Vertical, 2=Horizontal, 3=Both |
+| 16 | GestureSens | r/w | 2 | 1=Low, 2=Mid, 3=High |
+| 17 | PageNr | r/w | 1 | current page (1–4) |
+| 18 | PageDisplayMode | r/w | 0 | 0=ShowImmediately, 1=ShowIconOrName, 2=ShowGesture |
+| 19 | ButtonsLEDMode | r/w | 1 | 0=Off, 1=On, 2=OnForActive |
+| 20 | PageControlMode | r/w | 1 | 0=Command, 1=Gesture/Command |
+| 21 | GestureDisplayMode | r/w | 1 | 0=Off, 1=On |
+
+#### Methods (execute)
+
+| Index | Name | Args |
+|-------|------|------|
+| 0 | SwitchOnDisplay | — |
+| 1 | ShowButtons | — |
+| 2 | ClearScreen | — |
+| 3 | PrintText | x(0–127), y(0–63), txt, fontSize(1/2/3) |
+| 4 | DrawLine | x, y, xe, ye, color(0=black/1=white) |
+| 5 | DrawPoint | x, y, color |
+| 6 | DrawIcon | x, y, filename |
+| 7 | DisplayContent | — |
+| 20 | PrintFloat | x, y, number, precision(0–2), fontSize |
+| 21 | SetBeep | freq(Hz 30–5700), duration(ms), volume(0–16), 0 |
+| 22 | SetPageNr | nr(1–4) |
+| 27 | SetNextPage | — |
+| 28 | SetPrevPage | — |
+| 29 | Draw | — |
+
+set methods: SetGestureMode(15), SetGestureSens(16), SetPageDisplayMode(18), SetButtonsLEDMode(19), SetPageControlMode(20), SetGestureDisplayMode(21), SetProximitySens(10), SetProximityTimeout(11), SetBuzzerValue(13)
+
+#### Events
+
+| Address | Name |
+|---------|------|
+| 0 | OnGestureUp |
+| 1 | OnGestureDown |
+| 2 | OnGestureLeft |
+| 3 | OnGestureRight |
+| 4 | OnProximityDetect |
+| 5 | OnPageChange |
+
+---
+
+### PANELSENSTEMP (class=20, ×1)
+
+| Index | Feature | r/w | Default | Unit |
+|-------|---------|-----|---------|------|
+| 0 | Value | r/o | — | °C (0.0–45.0) |
+| 1 | Threshold | r/w | 0.1 | °C hysteresis |
+| 2 | Sensitivity | r/w | 1000 ms | averaging period |
+| 3 | MinValue | r/w | 0 | °C |
+| 4 | MaxValue | r/w | 45 | °C |
+
+Events: OnChange(0), OnRaiseValue(1), OnLowerValue(2), OnOutOfRange(3)
+
+---
+
+### PANELSENSLIGHT (class=21, ×1)
+
+| Index | Feature | r/w | Default | Unit |
+|-------|---------|-----|---------|------|
+| 0 | Value | r/o | — | % (0–100) |
+| 1 | Threshold | r/w | 0.5 | % hysteresis |
+| 2 | Sensitivity | r/w | 500 ms | averaging period |
+| 3 | MinValue | r/w | 0 | % |
+| 4 | MaxValue | r/w | 100 | % |
+
+Events: OnChange(0), OnRaiseValue(1), OnLowerValue(2), OnOutOfRange(3)
+
+---
+
+### PANEL_PAGE (class=19, ×4)
+
+| Index | Feature | r/w | Notes |
+|-------|---------|-----|-------|
+| 0 | PageType | r/w | 0=Inactive, 1=Buttons, 2=Thermostats, 3=FreeDraw |
+| 1 | PageName | r/w | string (max 15 chars) |
+| 3 | Object_1_Id | r/w | thermostat nameOnCLU or button number (1–16) |
+| 4 | Object_1_Name | r/w | display name |
+| 5–10 | Object_2/3/4_Id/Name | r/w | same pattern for slots 2–4 |
+
+---
+
+## Multi-CLU Note
+
+Secondary CLU (TCP-notified) receives button event type=0x07 only — all buttons appear identical (no identity). Button identity (event type=0x08) is only available to the primary CLU owning the RS485 bus.

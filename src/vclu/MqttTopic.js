@@ -1,4 +1,5 @@
 import { VirtualObject } from './VirtualObject.js';
+import { CLU_STATE } from './VirtualCLU.js';
 export const MQTT_TOPIC_FEATURES = {
     TOPIC: 0,
     MESSAGE: 1,
@@ -31,8 +32,8 @@ export class MqttTopic extends VirtualObject {
     }
     setup() {
         const clu = this.virtualSystem?.getVirtualClu();
-        if (clu?.state !== 1 /* OK */)
-            return; // wait for CLU to be OK
+        if (clu?.state !== CLU_STATE.OK)
+            return;
         this.triggerEvent(MQTT_TOPIC_EVENTS.INIT);
     }
     _getMqttClient() {
@@ -52,8 +53,8 @@ export class MqttTopic extends VirtualObject {
             if (!this._messageHandlerRegistered) {
                 this._messageHandlerRegistered = true;
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                client.on('message', (t, payload, packet) => {
-                    this._onMessage(t, payload, packet);
+                client.on('message', (t, payload) => {
+                    this._onMessage(t, payload);
                 });
             }
             return true;
@@ -103,8 +104,7 @@ export class MqttTopic extends VirtualObject {
             return false;
         }
     }
-    _onMessage(topic, payload, packet) {
-        void packet;
+    _onMessage(topic, payload) {
         if (!this._isSubscribedTo(topic))
             return;
         this._messageQueue.push({ topic, msg: { payload, ack: null } });
@@ -125,26 +125,23 @@ export class MqttTopic extends VirtualObject {
         this.loop();
     }
     loop() {
-        const currentMsg = this.getValue(MQTT_TOPIC_FEATURES.MESSAGE);
-        if (currentMsg != null)
-            return; // already processing
+        if (this.getValue(MQTT_TOPIC_FEATURES.MESSAGE) != null)
+            return;
         const entry = this._messageQueue.shift();
         if (entry == null)
             return;
-        const { topic, msg } = entry;
-        const parsed = parsePayload(msg.payload);
-        void this.awaitEventTrigger(MQTT_TOPIC_EVENTS.MESSAGE).then(() => {
-            this.setValue(MQTT_TOPIC_FEATURES.TOPIC, topic);
-            this.setValue(MQTT_TOPIC_FEATURES.MESSAGE, parsed);
-            this.triggerEvent(MQTT_TOPIC_EVENTS.MESSAGE, () => {
-                msg.ack?.();
-                this.clearValue(MQTT_TOPIC_FEATURES.MESSAGE);
-                // process next queued message
-                if (this._messageQueue.length > 0) {
-                    setImmediate(() => this._drainQueue());
-                }
-            });
-        });
+        void this._processMessage(entry).catch((e) => console.error(`[${this.name}] message handler error:`, e));
+    }
+    async _processMessage(entry) {
+        await this.awaitEventTrigger(MQTT_TOPIC_EVENTS.MESSAGE);
+        this.setValue(MQTT_TOPIC_FEATURES.TOPIC, entry.topic);
+        this.setValue(MQTT_TOPIC_FEATURES.MESSAGE, parsePayload(entry.msg.payload));
+        await this.runEvent(MQTT_TOPIC_EVENTS.MESSAGE);
+        entry.msg.ack?.();
+        this.clearValue(MQTT_TOPIC_FEATURES.MESSAGE);
+        if (this._messageQueue.length > 0) {
+            setImmediate(() => this._drainQueue());
+        }
     }
     close() {
         this._messageQueue.length = 0;

@@ -31,10 +31,9 @@ export declare class VirtualObject extends EventEmitter {
     addEventHandler(address: number, fn: EventHandler): void;
     isEventRegistered(address: number): boolean;
     awaitEventTrigger(address: number): Promise<void>;
-    /**
-     * Fire event handlers asynchronously, serialising against previous trigger for same address.
-     * Returns true if any handlers are registered.
-     */
+    /** Run event handlers for address, serialising against any previous trigger. Returns Promise that resolves when all handlers complete. */
+    runEvent(address: number): Promise<void>;
+    /** Fire event handlers asynchronously. Returns true if any handlers are registered. */
     triggerEvent(address: number, onCompleted?: () => void): boolean;
     setup(): void;
     loop(): void;

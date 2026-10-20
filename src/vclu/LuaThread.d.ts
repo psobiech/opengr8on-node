@@ -5,16 +5,16 @@ export declare class LuaThread {
     private readonly _sab;
     private readonly _i32;
     private readonly _u8;
-    private _startedResolve;
-    private _startedReject;
     private _onClientReport;
     private _emergency;
     private _callQueue;
+    private _pendingCallCount;
+    private static readonly MAX_PENDING_CALLS;
+    private static readonly CALL_TIMEOUT_MS;
     constructor();
     get isEmergency(): boolean;
-    start(scriptPath: string, emergency: boolean, vsOptions: VirtualSystemOptions, aDriveDirectory: string): Promise<void>;
-    onClientReport(fn: (addr: string, port: number, response: string) => void): void;
-    awaitStarted(timeoutMs?: number): Promise<void>;
+    start(scriptPath: string, emergency: boolean, vsOptions: VirtualSystemOptions, aDriveDirectory: string, timeoutMs?: number): Promise<void>;
+    onClientReport(fn: (addr: string, port: number, sessionId: number, response: string) => void): void;
     /** Execute a Lua expression and return its result. Thread-safe via internal queue. */
     luaCall(script: string): Promise<LuaLike>;
     private _doLuaCall;

@@ -1,3 +1,5 @@
+import type { InterfaceRegistry } from '../parsers/interfaces/InterfaceRegistry.js';
+import type { ProjectRegistry } from './ProjectRegistry.js';
 export type LuaLike = string | number | boolean | null | {
     readonly [key: string]: LuaLike;
 } | readonly LuaLike[];
@@ -30,11 +32,28 @@ export interface IVirtualCLU extends IVirtualObject {
     getMqttUrl(): string;
     triggerEvent(address: number, onCompleted?: () => void): boolean;
 }
+export type WorkerMessage = {
+    type: 'started';
+} | {
+    type: 'clientReport';
+    addr: string;
+    port: number;
+    sessionId: number;
+    response: string;
+} | {
+    type: 'error';
+    message: string;
+} | {
+    type: 'scriptError';
+    message: string;
+};
 export interface IVirtualSystem {
     readonly localAddress: string | undefined;
     getObject(name: string): IVirtualObject | null;
     getVirtualClu(): IVirtualCLU;
     getCipherKeyFor(address: string): unknown;
+    getInterfaceRegistry(): InterfaceRegistry;
+    getProjectRegistry(): ProjectRegistry;
     luaCall(script: string): LuaLike;
     fetchValues(subscriptions: Subscription[]): string;
     clientRegister(remoteAddr: string, addr: string, port: number, sessionId: number, subs: Subscription[]): string;

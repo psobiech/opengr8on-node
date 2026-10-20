@@ -32,7 +32,15 @@ function init(config) {
   _port = config.cluPort;
 
   const objects = readAllObjects(config.ompFile);
-  const rawClus = [...objects.values()].filter(o => o.objectClassEnum === SpecificObjectClass.CLU);
+
+  // OMP XML stores CLUs as ProgrammablePeripheryCLU wrapper objects whose inner
+  // <clu> element carries the actual hardware data (name, IP, keys). The wrapper
+  // has no 'clu' class attribute so objectClassEnum is UNSUPPORTED. We detect by
+  // objectClass string and pull data from the inner .clu node.
+  const rawClus = [...objects.values()].filter(o =>
+    o.objectClassEnum === SpecificObjectClass.CLU ||
+    (o.objectClass?.toLowerCase() === 'programmableperipheryclu' && o.clu),
+  );
 
   const keysPath = resolve(dirname(config.ompFile), 'keys.json');
   let projectCipherKey = null;
@@ -46,17 +54,20 @@ function init(config) {
     }
   } catch { /* no keys.json — fall back to per-device derivation */ }
 
-  _cluEntries = rawClus.map(c => ({
-    name:      getTextValue(c.name),
-    serial:    getTextValue(c.serialNumber),
-    ipAddress: getTextValue(c.ipAddress),
-    cipherKey: (c.cipherKeyType === 'PROJECT_KEY' && projectCipherKey)
-      ? projectCipherKey
-      : CipherKey.getInitialCipherKey(
-          Buffer.from(getTextValue(c.iv), 'base64'),
-          Buffer.from(getTextValue(c.privateKey), 'base64'),
-        ),
-  }));
+  _cluEntries = rawClus.map(c => {
+    const d = (c.objectClass?.toLowerCase() === 'programmableperipheryclu') ? c.clu : c;
+    return {
+      name:      getTextValue(d.name),
+      serial:    getTextValue(d.serialNumber),
+      ipAddress: getTextValue(d.ipAddress),
+      cipherKey: (d.cipherKeyType === 'PROJECT_KEY' && projectCipherKey)
+        ? projectCipherKey
+        : CipherKey.getInitialCipherKey(
+            Buffer.from(getTextValue(d.iv), 'base64'),
+            Buffer.from(getTextValue(d.privateKey), 'base64'),
+          ),
+    };
+  });
 
   _clients = new Map();
 }

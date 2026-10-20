@@ -91,16 +91,11 @@ export class VirtualObject extends EventEmitter {
         if (p !== undefined)
             await p;
     }
-    /**
-     * Fire event handlers asynchronously, serialising against previous trigger for same address.
-     * Returns true if any handlers are registered.
-     */
-    triggerEvent(address, onCompleted) {
-        if (!this.isEventRegistered(address)) {
-            onCompleted?.();
-            return false;
-        }
-        const handlers = [...this._eventHandlers.get(address)];
+    /** Run event handlers for address, serialising against any previous trigger. Returns Promise that resolves when all handlers complete. */
+    runEvent(address) {
+        const handlers = [...(this._eventHandlers.get(address) ?? [])];
+        if (handlers.length === 0)
+            return Promise.resolve();
         const prev = this._pendingEvents.get(address) ?? Promise.resolve();
         const p = prev
             .then(async () => {
@@ -114,12 +109,20 @@ export class VirtualObject extends EventEmitter {
             }
         })
             .finally(() => {
-            onCompleted?.();
             if (this._pendingEvents.get(address) === p) {
                 this._pendingEvents.delete(address);
             }
         });
         this._pendingEvents.set(address, p);
+        return p;
+    }
+    /** Fire event handlers asynchronously. Returns true if any handlers are registered. */
+    triggerEvent(address, onCompleted) {
+        if (!this.isEventRegistered(address)) {
+            onCompleted?.();
+            return false;
+        }
+        void this.runEvent(address).finally(() => onCompleted?.());
         return true;
     }
     // eslint-disable-next-line @typescript-eslint/no-empty-function

@@ -1,4 +1,11 @@
+import { XMLParser } from 'fast-xml-parser';
 import { VirtualObject } from './VirtualObject.js';
+const XML_PARSER = new XMLParser({
+    ignoreAttributes: true,
+    parseTagValue: true,
+    trimValues: true,
+    isArray: () => false,
+});
 export const HTTP_TYPE = {
     NONE: 0,
     TEXT: 1,
@@ -88,27 +95,35 @@ export function urlEncodeObject(obj) {
         .join('&');
 }
 function parseXml(xml) {
-    const result = {};
-    // matches <tag>content</tag> including nested; non-greedy via inner capture
-    const re = /<([\w:.-]+)(?:\s[^>]*)?>(\s*(?:<[\s\S]*?>[\s\S]*?<\/[\w:.-]+>|[^<]*)*?)\s*<\/\1>/g;
-    let match;
-    let found = false;
-    while ((match = re.exec(xml)) !== null) {
-        found = true;
-        const key = match[1].replace(/.*:/, ''); // strip namespace prefix
-        const inner = match[2].trim();
-        result[key] = /<[\w:.-]+/.test(inner) ? parseXml(inner) : castXmlValue(inner);
+    try {
+        const parsed = XML_PARSER.parse(xml);
+        if (Object.keys(parsed).length === 0)
+            return xml;
+        return xmlToLuaLike(parsed);
     }
-    return found ? result : xml;
+    catch {
+        return xml;
+    }
 }
-function castXmlValue(s) {
-    if (s === 'true')
-        return true;
-    if (s === 'false')
-        return false;
-    if (s !== '' && !isNaN(Number(s)))
-        return Number(s);
-    return s;
+function xmlToLuaLike(v) {
+    if (v === null || v === undefined)
+        return null;
+    if (typeof v === 'boolean')
+        return v;
+    if (typeof v === 'number')
+        return v;
+    if (typeof v === 'string')
+        return v;
+    if (Array.isArray(v))
+        return v.map(xmlToLuaLike);
+    if (typeof v === 'object') {
+        const result = {};
+        for (const [k, child] of Object.entries(v)) {
+            result[k.replace(/^[^:]+:/, '')] = xmlToLuaLike(child);
+        }
+        return result;
+    }
+    return String(v);
 }
 export class HttpObject extends VirtualObject {
     static CONNECT_TIMEOUT_MS = 4000;

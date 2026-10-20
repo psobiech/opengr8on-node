@@ -83,7 +83,7 @@ function parseSpecificObject(node, idMap) {
   const resolved = resolveRef(node, idMap);
   if (!resolved) return null;
 
-  const objectClass = resolved['@_class'];
+  const objectClass = resolved['@_class'] ?? node['@_class'];
   const id = resolved['@_id'] != null ? Number(resolved['@_id']) : null;
   const reference = resolved['@_reference'] != null ? Number(resolved['@_reference']) : null;
 

@@ -13,90 +13,100 @@ export class LuaThread {
     _sab;
     _i32;
     _u8;
-    _startedResolve = null;
-    _startedReject = null;
     _onClientReport = null;
     _emergency = false;
     // Serialise concurrent luaCall invocations — only one SAB slot available
     _callQueue = Promise.resolve();
+    _pendingCallCount = 0;
+    static MAX_PENDING_CALLS = 250;
+    static CALL_TIMEOUT_MS = 4_000;
     constructor() {
         this._sab = new SharedArrayBuffer(SAB_SIZE);
         this._i32 = new Int32Array(this._sab);
         this._u8 = new Uint8Array(this._sab);
     }
     get isEmergency() { return this._emergency; }
-    async start(scriptPath, emergency, vsOptions, aDriveDirectory) {
+    start(scriptPath, emergency, vsOptions, aDriveDirectory, timeoutMs = 30_000) {
         this._emergency = emergency;
         // cipherKeyProvider is a function — cannot be transferred to a Worker.
-        // Drop it; the Worker VS uses null keys (RemoteCLU comms not needed in VCLU mode).
         const { cipherKeyProvider: _, ...transferableOpts } = vsOptions;
-        this._worker = new Worker(WORKER_SCRIPT, {
-            workerData: {
-                vsOptions: transferableOpts,
-                scriptPath,
-                emergency,
-                sab: this._sab,
-                aDriveDirectory,
-            },
-        });
-        this._worker.on('message', (msg) => {
-            switch (msg.type) {
-                case 'started':
-                    this._startedResolve?.();
-                    this._startedResolve = null;
-                    this._startedReject = null;
-                    break;
-                case 'clientReport':
-                    this._onClientReport?.(msg.addr, msg.port, msg.response);
-                    break;
-                case 'error':
-                case 'scriptError':
-                    this._startedReject?.(new Error(msg.message ?? 'LuaWorker error'));
-                    this._startedResolve = null;
-                    this._startedReject = null;
-                    break;
-            }
-        });
-        this._worker.on('error', (e) => {
-            this._startedReject?.(e);
-            this._startedResolve = null;
-            this._startedReject = null;
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            const settle = (err) => {
+                if (settled)
+                    return;
+                settled = true;
+                clearTimeout(timer);
+                if (err != null)
+                    reject(err);
+                else
+                    resolve();
+            };
+            const timer = setTimeout(() => settle(new Error('VirtualSystem did not start in time')), timeoutMs);
+            this._worker = new Worker(WORKER_SCRIPT, {
+                workerData: { vsOptions: transferableOpts, scriptPath, emergency, sab: this._sab, aDriveDirectory },
+            });
+            const handlers = {
+                started: () => settle(),
+                clientReport: (msg) => this._onClientReport?.(msg.addr, msg.port, msg.sessionId, msg.response),
+                error: (msg) => settle(new Error(msg.message)),
+                scriptError: (msg) => settle(new Error(msg.message)),
+            };
+            this._worker.on('message', (msg) => handlers[msg.type](msg));
+            this._worker.on('error', (e) => settle(e));
         });
     }
     onClientReport(fn) {
         this._onClientReport = fn;
     }
-    awaitStarted(timeoutMs = 30_000) {
-        return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => {
-                this._startedResolve = null;
-                this._startedReject = null;
-                reject(new Error('VirtualSystem did not start in time'));
-            }, timeoutMs);
-            this._startedResolve = () => { clearTimeout(timer); resolve(); };
-            this._startedReject = (e) => { clearTimeout(timer); reject(e); };
-        });
-    }
     /** Execute a Lua expression and return its result. Thread-safe via internal queue. */
     luaCall(script) {
-        const result = this._callQueue.then(() => this._doLuaCall(script));
-        this._callQueue = result.catch(() => undefined);
-        return result;
+        if (this._pendingCallCount >= LuaThread.MAX_PENDING_CALLS) {
+            return Promise.reject(new Error('luaCall queue full'));
+        }
+        this._pendingCallCount++;
+        // _callQueue serializes SAB writes: only one call can use the shared buffer at a time.
+        // We keep tracking the underlying execution even when a caller times out, so the SAB
+        // state stays clean for the next call.
+        const execution = this._callQueue.then(() => this._doLuaCall(script));
+        this._callQueue = execution.catch(() => undefined);
+        // Race the execution against a timeout. The `done` flag prevents double-settlement
+        // if execution completes right as the timer fires.
+        return new Promise((resolve, reject) => {
+            let done = false;
+            const finish = (err, value) => {
+                if (done)
+                    return;
+                done = true;
+                clearTimeout(timer);
+                this._pendingCallCount--;
+                if (err != null)
+                    reject(err);
+                else
+                    resolve(value);
+            };
+            const timer = setTimeout(() => finish(new Error('luaCall timeout')), LuaThread.CALL_TIMEOUT_MS);
+            execution.then((v) => finish(null, v), (e) => finish(e));
+        });
     }
     async _doLuaCall(script) {
         if (this._worker == null)
             return null;
+        // Write script to shared buffer and signal the worker.
         const sb = Buffer.from(script, 'utf8');
         this._u8.set(sb, SCRIPT_OFFSET);
         Atomics.store(this._i32, 1, sb.length);
-        Atomics.store(this._i32, 0, STATE_PENDING);
-        Atomics.notify(this._i32, 0, 1);
+        Atomics.store(this._i32, 0, STATE_PENDING); // signal: script is ready
+        Atomics.notify(this._i32, 0, 1); // wake worker's Atomics.wait
+        // Wait for the worker to write STATE_RESULT.
         const waiter = Atomics.waitAsync(this._i32, 0, STATE_PENDING);
         if (waiter.async)
             await waiter.value;
+        // Read result and release the buffer back to IDLE.
         const resultLen = Atomics.load(this._i32, 2);
         const result = Buffer.from(this._sab, RESULT_OFFSET, resultLen).toString('utf8');
         Atomics.store(this._i32, 0, STATE_IDLE);
+        Atomics.notify(this._i32, 0, 1); // wake worker's Atomics.wait(STATE_RESULT)
         return result === 'nil' ? null : result;
     }
     close() {

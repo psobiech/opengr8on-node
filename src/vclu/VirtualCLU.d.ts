@@ -79,6 +79,7 @@ export declare class VirtualCLU extends VirtualObject {
     readonly rootDirectory: string;
     private _state;
     private _currentDate;
+    private _lastMinute;
     private _timeChangeTimer;
     private _mqttClient;
     private _mqttStartPending;

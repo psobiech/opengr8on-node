@@ -15,6 +15,9 @@ import { workerData, parentPort } from 'node:worker_threads';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { VirtualSystem } from './VirtualSystem.js';
+function send(msg) {
+    parentPort.postMessage(msg);
+}
 const SCRIPT_OFFSET = 12;
 const RESULT_OFFSET = 12 + 65536;
 const STATE_IDLE = 0;
@@ -25,23 +28,16 @@ const i32 = new Int32Array(sab);
 const u8 = new Uint8Array(sab);
 // ── VirtualSystem ─────────────────────────────────────────────────────────────
 const vs = new VirtualSystem(vsOptions);
-vs.setSendClientReportFn((addr, port, response) => {
-    parentPort.postMessage({ type: 'clientReport', addr, port, response });
+vs.setSendClientReportFn((addr, port, sessionId, response) => {
+    send({ type: 'clientReport', addr, port, sessionId, response });
 });
+await vs.loadRegistries();
 // ── wasmoon ───────────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let engine;
-try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = await import('wasmoon');
-    const LuaFactory = mod.LuaFactory ?? mod.default?.LuaFactory;
-    engine = await new LuaFactory().createEngine();
-}
-catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    parentPort.postMessage({ type: 'error', message: `wasmoon unavailable: ${msg}` });
-    process.exit(1);
-}
+const mod = await import('wasmoon');
+const LuaFactory = mod.LuaFactory ?? mod.default?.LuaFactory;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const engine = await new LuaFactory().createEngine();
 // ── Mount .LUA files into wasmoon's virtual FS ────────────────────────────────
 // MAIN.LUA does `require "user"` / `require "om"` — standard Lua looks for
 // lowercase filenames, so mount each file as its lowercase equivalent.
@@ -71,6 +67,13 @@ vs.setLuaCallFn((script) => {
     }
 });
 // ── SAB luaCall handler ───────────────────────────────────────────────────────
+// Called each Lua tick (from SYSTEM.Loop).
+// Three-phase handshake with the main thread:
+//   1. Main writes script → sets STATE_PENDING → notifies worker
+//   2. Worker reads script, runs Lua, writes result → sets STATE_RESULT → notifies main
+//   3. Main reads result → sets STATE_IDLE → notifies worker  (releases buffer for reuse)
+// The final Atomics.wait(STATE_RESULT) keeps the worker blocked while main reads,
+// so the buffer is never overwritten before main is done with it.
 function handlePendingCall() {
     if (Atomics.load(i32, 0) !== STATE_PENDING)
         return;
@@ -88,8 +91,9 @@ function handlePendingCall() {
     const rb = Buffer.from(result, 'utf8');
     u8.set(rb, RESULT_OFFSET);
     Atomics.store(i32, 2, rb.length);
-    Atomics.store(i32, 0, STATE_RESULT);
-    Atomics.notify(i32, 0, 1);
+    Atomics.store(i32, 0, STATE_RESULT); // signal main thread: result is ready
+    Atomics.notify(i32, 0, 1); // wake main thread's Atomics.waitAsync
+    Atomics.wait(i32, 0, STATE_RESULT); // block until main resets to IDLE
 }
 // ── Lua subscription helper ───────────────────────────────────────────────────
 function parseSubs(subs) {
@@ -140,13 +144,13 @@ const GATE_PROTO = {
 const SYSTEM = {
     Init: () => {
         vs.setup();
-        parentPort.postMessage({ type: 'started' });
+        send({ type: 'started' });
     },
     Loop: () => {
         vs.loop();
-        // Sleep up to 1ms, waking early if a luaCall arrives (i32[0] becomes != 0)
+        // Sleep up to 1ms. Wakes early if main thread writes STATE_PENDING (a luaCall arrived),
+        // so luaCall latency is bounded without busy-spinning.
         Atomics.wait(i32, 0, STATE_IDLE, 1);
-        // Handle any pending luaCall from the main thread
         handlePendingCall();
     },
     Wait: (_s, ms) => {
@@ -174,7 +178,7 @@ engine.global.set('collectgarbage', () => { });
 await engine.doString('package.path = "/lua/?.lua;" .. package.path');
 // ── Run the Lua script ────────────────────────────────────────────────────────
 if (!existsSync(scriptPath)) {
-    parentPort.postMessage({ type: 'error', message: `Script not found: ${scriptPath}` });
+    send({ type: 'error', message: `Script not found: ${scriptPath}` });
     process.exit(1);
 }
 const luaScript = readFileSync(scriptPath, 'utf8');
@@ -184,5 +188,5 @@ try {
 catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[LuaWorker] script error:', msg);
-    parentPort.postMessage({ type: 'scriptError', message: msg });
+    send({ type: 'scriptError', message: msg });
 }

@@ -97,7 +97,7 @@ export class HttpListener extends HttpObject {
                 }
                 catch { /* closed */ }
             });
-        });
+        }).catch((e) => console.error(`[${this.name}] request handler error:`, e));
     }
     _onSendResponse(bodyArg) {
         const res = this._currentRes;

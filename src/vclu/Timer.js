@@ -67,6 +67,7 @@ export class Timer extends VirtualObject {
         }
         this._counter = timeNs;
         this._lastTick = process.hrtime.bigint();
+        // tick 4× per period so the counter corrects for jitter instead of overshooting badly
         const tickMs = Math.max(1, Math.min(100, Number(timeNs / 1000000n / 4n)));
         this._interval = setInterval(() => this._tick(timeNs), tickMs);
     }

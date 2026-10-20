@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { XMLParser } from 'fast-xml-parser';
 export class ProjectRegistry {
     _cluById = new Map();
     _cluByName = new Map();
@@ -16,7 +17,6 @@ export class ProjectRegistry {
     }
     /** Load from a project.omp ZIP file. Requires optional 'adm-zip' package. */
     static async loadFromOmp(ompPath) {
-        // try adm-zip first
         let systemXml = null;
         let propertiesXml = null;
         try {
@@ -27,15 +27,12 @@ export class ProjectRegistry {
             propertiesXml = zip.readAsText('properties.xml') ?? null;
         }
         catch {
-            // adm-zip not available — try sibling system.xml
             const sibling = resolve(ompPath, '../system.xml');
-            if (existsSync(sibling)) {
+            if (existsSync(sibling))
                 systemXml = readFileSync(sibling, 'utf8');
-            }
             const propSibling = resolve(ompPath, '../properties.xml');
-            if (existsSync(propSibling)) {
+            if (existsSync(propSibling))
                 propertiesXml = readFileSync(propSibling, 'utf8');
-            }
         }
         if (systemXml == null) {
             console.warn(`[ProjectRegistry] cannot read system.xml from ${ompPath} — registry empty`);
@@ -72,40 +69,34 @@ export class ProjectRegistry {
         return this._cluByName.get(cluName)?.objects ?? [];
     }
     getObjectOnClu(cluName, nameOnClu) {
-        const obj = this.getObjectsForClu(cluName).find((o) => o.nameOnClu === nameOnClu);
-        return obj ?? null;
+        return this.getObjectsForClu(cluName).find((o) => o.nameOnClu === nameOnClu) ?? null;
     }
     get properties() { return this._properties; }
 }
 // ---------------------------------------------------------------------------
-// XML parsing helpers
+// Parsers
 // ---------------------------------------------------------------------------
-/** Extract first text content of <tag>text</tag> within xml string. */
-function txt(xml, tag) {
-    const re = new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, 's');
-    return xml.match(re)?.[1]?.trim() ?? null;
-}
-/** Extract all occurrences of <tag ...>content</tag> */
-function elems(xml, tag) {
-    const results = [];
-    const openRe = new RegExp(`<${tag}(?:\\s[^>]*)?>`, 'g');
-    let m;
-    while ((m = openRe.exec(xml)) !== null) {
-        const closeTag = `</${tag}>`;
-        const start = m.index + m[0].length;
-        const end = xml.indexOf(closeTag, start);
-        if (end === -1)
-            continue;
-        results.push(xml.slice(start, end));
-        openRe.lastIndex = end + closeTag.length;
-    }
-    return results;
-}
-/** Extract attribute value from opening tag text */
-function attr(tagText, name) {
-    const re = new RegExp(`${name}="([^"]*)"`, 's');
-    return tagText.match(re)?.[1] ?? null;
-}
+const PROPS_PARSER = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '',
+    parseAttributeValue: true,
+    parseTagValue: true,
+    trimValues: true,
+    isArray: (name) => name === 'entry',
+});
+// XStream serialization: elements can carry id="N" and reference other elements
+// via a sibling or ancestor <foo reference="N"/> node.
+const SYSTEM_PARSER = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '',
+    parseAttributeValue: true,
+    parseTagValue: true,
+    trimValues: true,
+    isArray: (name) => name === 'specificObject' ||
+        name === 'ProgrammablePeripheryCLU' ||
+        name === 'EmbeddedFeature' ||
+        name === 'EmbeddedEvent',
+});
 // ---------------------------------------------------------------------------
 // Parse properties.xml
 // ---------------------------------------------------------------------------
@@ -113,179 +104,182 @@ function parseProperties(xml) {
     const result = { encryptedClus: new Map() };
     if (!xml)
         return result;
-    const keyBytes = txt(xml, 'keyBytes');
-    const ivBytes = txt(xml, 'ivBytes');
-    if (keyBytes)
-        result.projectKey = Buffer.from(keyBytes, 'base64');
-    if (ivBytes)
-        result.projectIV = Buffer.from(ivBytes, 'base64');
-    // <encryptedCLU class="tree-map">
-    //   <entry><string>192.168.31.39</string><boolean>true</boolean></entry>
-    // </encryptedCLU>
-    const encBlock = xml.match(/<encryptedCLU[^>]*>([\s\S]*?)<\/encryptedCLU>/)?.[1] ?? '';
-    const entryRe = /<entry>([\s\S]*?)<\/entry>/g;
-    let entry;
-    while ((entry = entryRe.exec(encBlock)) !== null) {
-        const ip = txt(entry[1], 'string');
-        const boolVal = txt(entry[1], 'boolean');
-        if (ip)
-            result.encryptedClus.set(ip, boolVal === 'true');
+    try {
+        const doc = PROPS_PARSER.parse(xml);
+        const root = rootOf(doc);
+        if (typeof root['keyBytes'] === 'string')
+            result.projectKey = Buffer.from(root['keyBytes'], 'base64');
+        if (typeof root['ivBytes'] === 'string')
+            result.projectIV = Buffer.from(root['ivBytes'], 'base64');
+        const encClu = root['encryptedCLU'];
+        for (const e of toArray(encClu?.['entry'])) {
+            const entry = e;
+            const ip = str(entry['string']);
+            if (ip)
+                result.encryptedClus.set(ip, entry['boolean'] === true || entry['boolean'] === 'true');
+        }
+    }
+    catch (e) {
+        console.warn('[ProjectRegistry] failed to parse properties.xml:', e);
     }
     return result;
 }
 // ---------------------------------------------------------------------------
 // Parse system.xml (XStream format)
 // ---------------------------------------------------------------------------
-function buildIdMap(xml, map) {
-    const re = /<(\w+)[^>]+\bid="(\d+)"[^>]*>([\s\S]*?)<\/\1>/g;
-    let m;
-    while ((m = re.exec(xml)) !== null) {
-        if (!map.has(m[2]))
-            map.set(m[2], m[3]);
-        buildIdMap(m[3], map);
-    }
-}
 function parseSystem(xml) {
-    // ------------------------------------------------------------------
-    // Step 1: Build id → raw body map for all elements with id= attribute
-    //         (XStream reference resolution — recursive so nested ids are captured)
-    // ------------------------------------------------------------------
-    const idMap = new Map();
-    buildIdMap(xml, idMap);
-    // ------------------------------------------------------------------
-    // Step 2: Extract CLU definitions
-    //         <specificObject class="ProgrammablePeripheryCLU" id="N">
-    //           <clu id="M">...</clu>
-    //           <peripheryList ...>...</peripheryList>
-    //         </specificObject>
-    // ------------------------------------------------------------------
     const clus = [];
-    const soRe = /<specificObject class="ProgrammablePeripheryCLU" id="(\d+)">([\s\S]*?)<\/specificObject>/g;
-    let m;
-    while ((m = soRe.exec(xml)) !== null) {
-        const soId = m[1];
-        const soBody = m[2];
-        // Must contain inline <clu id="N"> (not a reference)
-        const cluInlineMatch = soBody.match(/<clu id="(\d+)">([\s\S]*?)<\/clu>/);
-        if (cluInlineMatch == null)
+    let doc;
+    try {
+        doc = SYSTEM_PARSER.parse(xml);
+    }
+    catch (e) {
+        console.warn('[ProjectRegistry] failed to parse system.xml:', e);
+        return clus;
+    }
+    const root = rootOf(doc);
+    // Walk entire tree once to build id → object map (XStream reference resolution)
+    const idMap = new Map();
+    collectIds(root, idMap);
+    const soList = (root['objectList'] ?? root['specificObjectList']);
+    if (!soList)
+        return clus;
+    for (const so of toArray(soList['specificObject'])) {
+        const soObj = so;
+        if (soObj['class'] !== 'ProgrammablePeripheryCLU')
             continue;
-        const cluId = cluInlineMatch[1];
-        const cluBody = cluInlineMatch[2];
-        const cluName = txt(cluBody, 'name');
-        const ipAddress = txt(cluBody, 'ipAddress');
-        const nameOnClu = txt(cluBody, 'nameOnCLU') ?? txt(cluBody, 'nameOnClu');
-        const serialNumber = txt(cluBody, 'serialNumber') ?? undefined;
-        const macAddress = txt(cluBody, 'macAddress') ?? undefined;
-        if (cluName == null || ipAddress == null)
+        // CLU definition must be inline (not an XStream reference to another element)
+        const cluNode = soObj['clu'];
+        if (!cluNode || 'reference' in cluNode)
             continue;
-        // ------------------------------------------------------------------
-        // Step 3: Extract device objects from peripheryList
-        //         <ProgrammablePeripheryCLU id="N">
-        //           <clu reference="M"/>  ← M == cluId
-        //           <name>...</name>
-        //           <nameOnCLU>...</nameOnCLU>
-        //           <typeName>...</typeName>
-        //           <typeId>...</typeId>
-        //           <features>...</features>
-        //           <events>...</events>
-        //         </ProgrammablePeripheryCLU>
-        // ------------------------------------------------------------------
+        const cluId = toNum(cluNode['id']);
+        const cluName = str(cluNode['name']);
+        const ipAddress = str(cluNode['ipAddress']);
+        if (!cluName || !ipAddress || isNaN(cluId))
+            continue;
         const objects = [];
-        const peripheryMatch = soBody.match(/<peripheryList[^>]*>([\s\S]*?)<\/peripheryList>/);
-        if (peripheryMatch != null) {
-            const peripheryBody = peripheryMatch[1];
-            const devRe = /<ProgrammablePeripheryCLU id="(\d+)">([\s\S]*?)<\/ProgrammablePeripheryCLU>/g;
-            let dev;
-            while ((dev = devRe.exec(peripheryBody)) !== null) {
-                const devBody = dev[2];
-                // Must reference the correct parent CLU
-                if (!devBody.includes(`<clu reference="${cluId}"/>`))
+        const peripheryList = resolveRef(soObj['peripheryList'], idMap);
+        if (peripheryList) {
+            for (const dev of toArray(peripheryList['ProgrammablePeripheryCLU'])) {
+                const devNode = dev;
+                // Filter: device must reference this CLU
+                const devClu = devNode['clu'];
+                if (!devClu || toNum(devClu['reference']) !== cluId)
                     continue;
-                const devName = txt(devBody, 'name');
-                const devNameOnClu = txt(devBody, 'nameOnCLU') ?? txt(devBody, 'nameOnClu');
-                const typeName = txt(devBody, 'typeName');
-                const typeIdStr = txt(devBody, 'typeId');
-                if (devName == null || devNameOnClu == null)
+                const devName = str(devNode['name']);
+                const devNameOnClu = str(devNode['nameOnCLU']) ?? str(devNode['nameOnClu']);
+                if (!devName || !devNameOnClu)
                     continue;
-                const features = parseEmbeddedFeatures(devBody, idMap);
-                const events = parseEmbeddedEvents(devBody, idMap);
+                const typeId = toNum(devNode['typeId']);
                 objects.push({
                     name: devName,
                     nameOnClu: devNameOnClu,
-                    typeName: typeName ?? '',
-                    typeId: typeIdStr != null ? parseInt(typeIdStr, 10) : 0,
-                    features,
-                    events,
+                    typeName: str(devNode['typeName']) ?? '',
+                    typeId: isNaN(typeId) ? 0 : typeId,
+                    features: parseEmbeddedFeatures(devNode, idMap),
+                    events: parseEmbeddedEvents(devNode, idMap),
                     cluName,
                 });
             }
         }
         clus.push({
-            id: soId,
+            id: String(soObj['id'] ?? ''),
             name: cluName,
-            nameOnClu: nameOnClu ?? cluName,
+            nameOnClu: str(cluNode['nameOnCLU']) ?? str(cluNode['nameOnClu']) ?? cluName,
             ipAddress,
-            serialNumber,
-            macAddress,
+            serialNumber: str(cluNode['serialNumber']) ?? undefined,
+            macAddress: str(cluNode['macAddress']) ?? undefined,
             objects,
         });
-        void cluId; // used for reference checks above
     }
     return clus;
 }
-function parseEmbeddedFeatures(body, idMap) {
-    const features = [];
-    // Resolve features block (may be inline or referenced)
-    let featuresBody = '';
-    const inlineMatch = body.match(/<features[^>]*>([\s\S]*?)<\/features>/);
-    if (inlineMatch != null) {
-        featuresBody = inlineMatch[1];
-    }
-    else {
-        const refMatch = body.match(/<features reference="(\d+)"\/>/);
-        if (refMatch != null)
-            featuresBody = idMap.get(refMatch[1]) ?? '';
-    }
-    if (!featuresBody)
-        return features;
-    for (const ef of elems(featuresBody, 'EmbeddedFeature')) {
-        const name = txt(ef, 'name');
-        const indexStr = txt(ef, 'index');
-        const access = txt(ef, 'accessType') ?? 'READ';
-        const paramType = txt(ef, 'paramType') ?? 'NUMBER';
-        if (name == null || indexStr == null)
-            continue;
-        features.push({
-            name,
-            index: parseInt(indexStr, 10),
-            accessGet: access === 'READ' || access === 'ALL',
-            accessSet: access === 'WRITE' || access === 'ALL',
-            type: paramType,
-        });
-    }
-    return features;
+function parseEmbeddedFeatures(devNode, idMap) {
+    const featuresNode = resolveRef(devNode['features'], idMap);
+    if (!featuresNode)
+        return [];
+    return toArray(featuresNode['EmbeddedFeature']).flatMap((ef) => {
+        const e = ef;
+        const name = str(e['name']);
+        const index = toNum(e['index']);
+        if (!name || isNaN(index))
+            return [];
+        const access = str(e['accessType']) ?? 'READ';
+        return [{
+                name,
+                index,
+                accessGet: access === 'READ' || access === 'ALL',
+                accessSet: access === 'WRITE' || access === 'ALL',
+                type: str(e['paramType']) ?? 'NUMBER',
+            }];
+    });
 }
-function parseEmbeddedEvents(body, idMap) {
-    const events = [];
-    let eventsBody = '';
-    const inlineMatch = body.match(/<events[^>]*>([\s\S]*?)<\/events>/);
-    if (inlineMatch != null) {
-        eventsBody = inlineMatch[1];
-    }
-    else {
-        const refMatch = body.match(/<events reference="(\d+)"\/>/);
-        if (refMatch != null)
-            eventsBody = idMap.get(refMatch[1]) ?? '';
-    }
-    if (!eventsBody)
-        return events;
-    for (const ee of elems(eventsBody, 'EmbeddedEvent')) {
-        const name = txt(ee, 'name');
-        const indexStr = txt(ee, 'index');
-        if (name == null || indexStr == null)
-            continue;
-        events.push({ name, index: parseInt(indexStr, 10) });
-    }
-    return events;
+function parseEmbeddedEvents(devNode, idMap) {
+    const eventsNode = resolveRef(devNode['events'], idMap);
+    if (!eventsNode)
+        return [];
+    return toArray(eventsNode['EmbeddedEvent']).flatMap((ee) => {
+        const e = ee;
+        const name = str(e['name']);
+        const index = toNum(e['index']);
+        if (!name || isNaN(index))
+            return [];
+        return [{ name, index }];
+    });
 }
-void attr; // exported util used externally if needed
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+/** Walk parsed tree, registering every object that has an id attribute. */
+function collectIds(node, map) {
+    if (!node || typeof node !== 'object')
+        return;
+    if (Array.isArray(node)) {
+        for (const item of node)
+            collectIds(item, map);
+        return;
+    }
+    const obj = node;
+    const id = toNum(obj['id']);
+    if (!isNaN(id) && !map.has(id))
+        map.set(id, obj);
+    for (const val of Object.values(obj))
+        collectIds(val, map);
+}
+/** If node has a reference attribute, return the referenced object from idMap. */
+function resolveRef(node, idMap) {
+    if (!node)
+        return undefined;
+    if (!('reference' in node))
+        return node;
+    const id = toNum(node['reference']);
+    return isNaN(id) ? node : idMap.get(id);
+}
+/** Get the first non-processing-instruction element from a parsed document. */
+function rootOf(doc) {
+    const entry = Object.entries(doc).find(([k]) => !k.startsWith('?'));
+    return (entry?.[1] ?? {});
+}
+function toArray(v) {
+    if (!v)
+        return [];
+    if (Array.isArray(v))
+        return v;
+    return [v];
+}
+function str(v) {
+    if (v == null)
+        return null;
+    if (typeof v === 'string')
+        return v || null;
+    if (typeof v === 'number' || typeof v === 'boolean')
+        return String(v);
+    return null;
+}
+function toNum(v) {
+    if (typeof v === 'number')
+        return v;
+    if (typeof v === 'string')
+        return parseInt(v, 10);
+    return NaN;
+}

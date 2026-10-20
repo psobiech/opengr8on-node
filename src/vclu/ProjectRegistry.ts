@@ -202,7 +202,7 @@ function parseSystem(xml: string): ProjectClu[] {
   const idMap = new Map<number, Record<string, unknown>>();
   collectIds(root, idMap);
 
-  const soList = root['specificObjectList'] as Record<string, unknown> | undefined;
+  const soList = (root['objectList'] ?? root['specificObjectList']) as Record<string, unknown> | undefined;
   if (!soList) return clus;
 
   for (const so of toArray(soList['specificObject'])) {

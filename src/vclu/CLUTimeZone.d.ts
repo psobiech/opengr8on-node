@@ -1,4 +1,4 @@
 /** IANA timezone IDs indexed by CLU TIME_ZONE feature value (0-22). */
-export declare const CLU_TIMEZONE_IDS: readonly ["Europe/Warsaw", "Europe/London", "Europe/Moscow", "Europe/Istanbul", "Europe/Athens", "Asia/Dubai", "Asia/Jakarta", "Asia/Hong_Kong", "Australia/Sydney", "Australia/Perth", "Australia/Brisbane", "Pacific/Auckland", "Pacific/Honolulu", "America/Anchorage", "America/Chicago", "America/New_York", "America/Barbados", "America/Sao_Paulo", "America/Bogota", "America/Argentina/Buenos_Aires", "America/Chicago", "America/Los_Angeles", "UTC"];
+export declare const CLU_TIMEZONE_IDS: readonly ['Europe/Warsaw', 'Europe/London', 'Europe/Moscow', 'Europe/Istanbul', 'Europe/Athens', 'Asia/Dubai', 'Asia/Jakarta', 'Asia/Hong_Kong', 'Australia/Sydney', 'Australia/Perth', 'Australia/Brisbane', 'Pacific/Auckland', 'Pacific/Honolulu', 'America/Anchorage', 'America/Chicago', 'America/New_York', 'America/Barbados', 'America/Sao_Paulo', 'America/Bogota', 'America/Argentina/Buenos_Aires', 'America/Chicago', 'America/Los_Angeles', 'UTC'];
 export declare function cluTimeZoneId(index: number): string;
 //# sourceMappingURL=CLUTimeZone.d.ts.map

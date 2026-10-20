@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs';
 import { VirtualObject } from './VirtualObject.js';
 import { VirtualCLU } from './VirtualCLU.js';
 import { RemoteCLU } from './RemoteCLU.js';
@@ -6,6 +7,8 @@ import { Storage } from './Storage.js';
 import { HttpRequest } from './HttpRequest.js';
 import { HttpListener } from './HttpListener.js';
 import { MqttTopic } from './MqttTopic.js';
+import { ProjectRegistry } from './ProjectRegistry.js';
+import { InterfaceRegistry } from '../parsers/interfaces/InterfaceRegistry.js';
 const LOOP_INTERVAL_MS = 512;
 export class VirtualSystem {
     _objectsByName = new Map();
@@ -15,12 +18,42 @@ export class VirtualSystem {
     _loopTimer = null;
     _clientReportFns = new Map();
     _lastClientReportMs = 0;
+    _interfaceRegistry = InterfaceRegistry.EMPTY;
+    _projectRegistry = ProjectRegistry.empty();
     constructor(options) {
         this._options = options;
         const cluName = options.cluName ?? 'VIRTUAL_CLU';
         this._virtualClu = new VirtualCLU(this, options.rootDirectory, cluName);
         this._objectsByName.set(cluName, this._virtualClu);
     }
+    /** Load InterfaceRegistry and ProjectRegistry from the paths in options. Call once before setup(). */
+    async loadRegistries() {
+        const { interfaceRegistryPath, projectOmpPath } = this._options;
+        if (interfaceRegistryPath) {
+            try {
+                const stat = statSync(interfaceRegistryPath, { throwIfNoEntry: false });
+                if (stat?.isDirectory()) {
+                    this._interfaceRegistry = InterfaceRegistry.fromDirectory(interfaceRegistryPath);
+                }
+                else if (stat) {
+                    this._interfaceRegistry = InterfaceRegistry.fromZip(interfaceRegistryPath);
+                }
+            }
+            catch (e) {
+                console.warn('[VirtualSystem] failed to load interface registry:', e);
+            }
+        }
+        if (projectOmpPath) {
+            try {
+                this._projectRegistry = await ProjectRegistry.loadFromOmp(projectOmpPath);
+            }
+            catch (e) {
+                console.warn('[VirtualSystem] failed to load project registry:', e);
+            }
+        }
+    }
+    getInterfaceRegistry() { return this._interfaceRegistry; }
+    getProjectRegistry() { return this._projectRegistry; }
     get localAddress() {
         return this._options.localAddress;
     }
@@ -77,7 +110,6 @@ export class VirtualSystem {
                 obj = new VirtualObject(this, name);
                 break;
         }
-        void ipAddress;
         this._objectsByName.set(name, obj);
     }
     newGate(index, name) {
@@ -161,13 +193,12 @@ export class VirtualSystem {
         this._clientReportFns.set(key, sendValues);
         return `clientReport:${sessionId}:${this.fetchValues(subs)}`;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _sendClientReport(_addr, _port, _sessionId, _response) {
-        // Implemented by Server — override or inject
+    _sendClientReportImpl = null;
+    _sendClientReport(addr, port, sessionId, response) {
+        this._sendClientReportImpl?.(addr, port, sessionId, response);
     }
     setSendClientReportFn(fn) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        this._sendClientReport = (_addr, _port, _sessionId, response) => fn(_addr, _port, response);
+        this._sendClientReportImpl = fn;
     }
     clientDestroy(addr, port, sessionId) {
         this._clientReportFns.delete(`${addr}:${port}:${sessionId}`);

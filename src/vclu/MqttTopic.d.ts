@@ -42,6 +42,7 @@ export declare class MqttTopic extends VirtualObject {
     private _isSubscribedTo;
     private _drainQueue;
     loop(): void;
+    private _processMessage;
     close(): void;
 }
 //# sourceMappingURL=MqttTopic.d.ts.map

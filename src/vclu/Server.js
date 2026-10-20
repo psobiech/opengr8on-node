@@ -58,10 +58,6 @@ export class Server {
             httpListenerPort: opts.httpListenerPort,
             cipherKeyProvider: () => this._projectCipherKey,
         });
-        // Wire up client report sending
-        this._vs.setSendClientReportFn((addr, port, response) => {
-            void this._sendLuaResponse(addr, port, 0, response);
-        });
     }
     get virtualSystem() {
         return this._vs;
@@ -81,23 +77,30 @@ export class Server {
             this._luaThread.close();
             this._luaThread = null;
         }
+        const runtimeDir = resolve(this._opts.rootDirectory, '..');
+        const zipPath = resolve(runtimeDir, 'device-interfaces.zip');
+        const dirPath = resolve(runtimeDir, 'device-interfaces');
+        const interfaceRegistryPath = existsSync(zipPath) ? zipPath
+            : existsSync(dirPath) ? dirPath
+                : undefined;
         const vsOptions = {
             rootDirectory: this._opts.rootDirectory,
             localAddress: this._opts.localAddress,
             port: this._opts.port,
             cluName: this._opts.cluName,
             httpListenerPort: this._opts.httpListenerPort,
+            interfaceRegistryPath,
+            projectOmpPath: this._opts.projectOmpPath,
         };
         const aDriveDirectory = resolve(this._opts.rootDirectory, 'a');
         if (this._opts.mainLuaPath != null && existsSync(this._opts.mainLuaPath)) {
             const thread = new LuaThread();
-            thread.onClientReport((addr, port, response) => {
-                void this._sendLuaResponse(addr, port, 0, response);
+            thread.onClientReport((addr, port, sessionId, response) => {
+                void this._sendLuaResponse(addr, port, sessionId, response);
             });
             try {
                 await thread.start(this._opts.mainLuaPath, false, vsOptions, aDriveDirectory);
                 this._luaThread = thread;
-                await thread.awaitStarted();
                 await this._validateCheckAlive();
             }
             catch (e) {
@@ -106,13 +109,13 @@ export class Server {
                 this._luaThread = null;
                 const emergencyPath = resolve(aDriveDirectory, 'EMERGNCY.LUA');
                 const emergencyThread = new LuaThread();
-                emergencyThread.onClientReport((addr, port, response) => {
-                    void this._sendLuaResponse(addr, port, 0, response);
+                emergencyThread.onClientReport((addr, port, sessionId, response) => {
+                    void this._sendLuaResponse(addr, port, sessionId, response);
                 });
                 try {
                     await emergencyThread.start(emergencyPath, true, vsOptions, aDriveDirectory);
                     this._luaThread = emergencyThread;
-                    await emergencyThread.awaitStarted();
+                    console.warn('[Server] Emergency mode active — CLU state may not be OK');
                 }
                 catch (e2) {
                     console.error('[Server] Emergency Lua thread also failed:', e2);
@@ -123,10 +126,7 @@ export class Server {
             }
         }
         else {
-            // No Lua script — JS-only mode, VS runs in main thread
-            this._vs.setup();
-            this._vs.getVirtualClu().setState(CLU_STATE.OK);
-            this._vs.startLoop();
+            throw new Error('[Server] MAIN.LUA not found — cannot start VCLU without a Lua script');
         }
     }
     async _bindSockets() {

@@ -43,7 +43,9 @@ export const CLU_EVENTS = {
     TIME_CHANGE: 13,
     MQTT_RECEIVE_VALUE: 20,
 };
-const TIME_CHANGE_DELTA_MS = 60_000;
+function isMqttCapable(obj) {
+    return typeof obj.mqttOnValueChange === 'function';
+}
 export class VirtualCLU extends VirtualObject {
     static INDEX = 0;
     static FEATURES = CLU_FEATURES;
@@ -52,6 +54,7 @@ export class VirtualCLU extends VirtualObject {
     rootDirectory;
     _state = CLU_STATE.STARTING;
     _currentDate = new Date();
+    _lastMinute = -1;
     _timeChangeTimer = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     _mqttClient = null;
@@ -85,11 +88,12 @@ export class VirtualCLU extends VirtualObject {
         this.registerMethod(CLU_METHODS.MQTT_SEND_VALUE, (uniqueId, stateVal) => this._mqttSendValue(uniqueId, String(stateVal ?? '')));
         this.registerMethod(CLU_METHODS.MQTT_ON_VALUE_CHANGE, (objectId, fn) => this._mqttOnValueChange(objectId, fn));
         this._timeChangeTimer = setInterval(() => {
-            const prev = this._currentDate;
             this._currentDate = new Date();
-            if (Math.abs(this._currentDate.getTime() - prev.getTime()) >= TIME_CHANGE_DELTA_MS) {
+            const minute = this._tzParts().minute;
+            if (this._lastMinute !== -1 && minute !== this._lastMinute) {
                 this.triggerEvent(CLU_EVENTS.TIME_CHANGE);
             }
+            this._lastMinute = minute;
         }, 1000);
     }
     _tz() {
@@ -295,9 +299,7 @@ export class VirtualCLU extends VirtualObject {
             return null;
         const [cluName] = parts;
         const obj = this.virtualSystem.getObject(cluName);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (obj != null && typeof obj.mqttOnValueChange === 'function') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (isMqttCapable(obj)) {
             obj.mqttOnValueChange(objectId, fn);
         }
         return null;

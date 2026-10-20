@@ -13,6 +13,7 @@
     "transcribe-modules": "./bin/transcribe-modules.js",
     "vclu": "./bin/vclu.js",
     "clu-mcp": "./bin/clu-mcp.js",
+    "clu-repl": "./bin/clu-repl.js",
     "tfbus-mcp": "./bin/tfbus-mcp.js"
   },
   "engines": {

@@ -10,3 +10,4 @@ export { RxFrameParser } from './transport/RxFrameParser.js';
 export { TFBusEventBus } from './TFBusEventBus.js';
 export { runMonitor } from './monitor.js';
 export { runRepl } from './repl.js';
+export { sniffBus } from './sniff.js';

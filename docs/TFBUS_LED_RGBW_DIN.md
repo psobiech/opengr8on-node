@@ -70,9 +70,58 @@ Module responds: `AA 00 01 AB` (standard ACK).
 
 ---
 
+## CLU Interface
+
+### Method Indices (execute)
+
+| Index | Method | Args |
+|-------|--------|------|
+| 3 | SetRedValue | value (0–255) |
+| 4 | SetGreenValue | value (0–255) |
+| 5 | SetBlueValue | value (0–255) |
+| 12 | SetWhiteValue | value (0–255) |
+| 6 | SetRGBvalue | R, G, B |
+
+Ramp time can be passed as optional third arg: `<ObjName>:execute(3, 255, 500)` (500 ms).
+
+### Feature Indices (set/get)
+
+| Index | Feature | Default |
+|-------|---------|---------|
+| 3 | RedValue | — |
+| 4 | GreenValue | — |
+| 5 | BlueValue | — |
+| 7 | RampTime (ms) | 0 |
+| 8 | MaxValue | 1 |
+| 9 | MinValue | 0 |
+| 10 | RedCorrection (%) | 100 |
+| 11 | GreenCorrection (%) | 100 |
+| 12 | BlueCorrection (%) | 100 |
+
+---
+
 ## STATUS_POLL Response
 
-No specific STATUS_POLL payload documented for LED_RGBW_DIN. Module uses standard ACK on commands.
+Module responds ACK (`AA 00 01 AB`) by default. A data frame is only emitted when a MODULE_CMD coincides with the STATUS_POLL exchange (timing collision — non-deterministic; see TFBUS_TESTING.md).
+
+**One captured data frame** (R transitioning 255→0 with ramp=2000 ms):
+
+```
+aa 00 06 01  06 01 01 00  ab
+│  │  │  │   │  │  │  │
+│  │  │  │   │  │  │  └── data[0] = 0x00 (target value)
+│  │  │  │   │  │  └───── meta = 0x01
+│  │  │  │   │  └──────── len = 1
+│  │  │  │   └─────────── type = 0x06
+│  │  │  └─────────────── count = 1 TLV record
+│  │  └────────────────── plen = 6 (5 payload bytes)
+│  └───────────────────── addr = 0x00 (module → CLU)
+└──────────────────────── 0xAA start
+```
+
+Decoded by sniffer: `{ type: 6, meta: 1, data: "00" }`
+
+Type=6 matches `SET_RAMP_TIME` command code. Full mapping of type/meta/data across channels not yet decoded (capture is timing-dependent).
 
 ---
 

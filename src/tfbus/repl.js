@@ -110,7 +110,8 @@ export async function runRepl(transport, options = {}) {
         process.stderr.write(`warn: ${e}\n`);
     // name (lower) → { module, io }
     const nameIndex = new Map();
-    const addrIndex = new Map();
+    const addrIndex = new Map();   // key: `${cluSerial}:${addr}`
+    const addrByAddr = new Map();  // key: addr → [{module, entry}]
     let ompModules = [];
     if (ompPath) {
         try {
@@ -119,7 +120,10 @@ export async function runRepl(transport, options = {}) {
                 ompModules = ompModules.filter(m => m.cluSerial === cluSerial);
             for (const m of ompModules) {
                 const entry = findByFields(transcript, m.hwType, m.fwVer);
-                addrIndex.set(m.addr, { module: m, entry });
+                addrIndex.set(`${m.cluSerial}:${m.addr}`, { module: m, entry });
+                const arr = addrByAddr.get(m.addr) ?? [];
+                arr.push({ module: m, entry });
+                addrByAddr.set(m.addr, arr);
                 for (const io of m.ios) {
                     nameIndex.set(io.name.toLowerCase(), { module: m, io });
                 }
@@ -179,19 +183,42 @@ export async function runRepl(transport, options = {}) {
     function resolveTarget(arg) {
         if (!arg)
             return null;
+        // "cluSerial:addr" explicit format
+        const colonIdx = arg.indexOf(':');
+        if (colonIdx > 0) {
+            const clu = arg.slice(0, colonIdx);
+            const addrStr = arg.slice(colonIdx + 1);
+            const n = addrStr.startsWith('0x') || addrStr.startsWith('0X')
+                ? parseInt(addrStr.slice(2), 16)
+                : /^\d+$/.test(addrStr) ? parseInt(addrStr, 10) : NaN;
+            if (!isNaN(n)) {
+                const hit = addrIndex.get(`${clu}:${n}`);
+                return hit
+                    ? { addr: n, cluSerial: clu, io: null, entry: hit.entry, label: `${clu}:${n}` }
+                    : null;
+            }
+            return null;
+        }
         // numeric addr
         const n = arg.startsWith('0x') || arg.startsWith('0X')
             ? parseInt(arg.slice(2), 16)
             : /^\d+$/.test(arg) ? parseInt(arg, 10) : NaN;
         if (!isNaN(n)) {
-            const hit = addrIndex.get(n);
-            return { addr: n, io: null, entry: hit?.entry ?? null, label: `addr=${n}` };
+            const matches = addrByAddr.get(n) ?? [];
+            if (matches.length > 1) {
+                const clus = matches.map(h => h.module.cluSerial).join(', ');
+                process.stdout.write(`Ambiguous: addr=${n} exists in CLUs: ${clus}. Use cluSerial:addr.\n`);
+                return null;
+            }
+            const hit = matches[0] ?? null;
+            return { addr: n, cluSerial: hit?.module.cluSerial ?? null, io: null, entry: hit?.entry ?? null, label: `addr=${n}` };
         }
         // name lookup
         const hit = nameIndex.get(arg.toLowerCase());
         if (hit) {
             const { module: m, io } = hit;
-            return { addr: m.addr, io, entry: addrIndex.get(m.addr)?.entry ?? null, label: io.name };
+            const entry = addrIndex.get(`${m.cluSerial}:${m.addr}`)?.entry ?? null;
+            return { addr: m.addr, cluSerial: m.cluSerial ?? null, io, entry, label: io.name };
         }
         return null;
     }
@@ -199,14 +226,14 @@ export async function runRepl(transport, options = {}) {
         process.stdout.write([
             '',
             'Commands:',
-            '  list                              — list all known modules',
-            '  info <name|addr>                  — module details + transcript features/methods',
-            '  get <name|addr> [Feature]          — STATUS_POLL: all values, or one named feature',
-            '  status <name|addr>                — send STATUS_POLL and decode response',
-            '  version <name|addr>               — send VERSION_QUERY',
-            '  set <name|addr> <Feature> <value> — set a feature by transcript name',
-            '  execute <name|addr> <Method> [p…] — execute a method by transcript name',
-            '  listen [name|addr] [seconds=5]    — passively watch module(s) for N seconds',
+            '  list                                    — list all known modules grouped by CLU',
+            '  info <name|addr|cluSerial:addr>         — module details + transcript features/methods',
+            '  get <name|addr|cluSerial:addr> [Feature] — STATUS_POLL: all values, or one named feature',
+            '  status <name|addr|cluSerial:addr>       — send STATUS_POLL and decode response',
+            '  version <name|addr|cluSerial:addr>      — send VERSION_QUERY',
+            '  set <name|addr|cluSerial:addr> <Feature> <value> — set a feature by transcript name',
+            '  execute <name|addr|cluSerial:addr> <Method> [p…] — execute a method by transcript name',
+            '  listen [name|addr|cluSerial:addr] [seconds=5] — passively watch module(s) for N seconds',
             '  busload [seconds=10]              — measure RS485 bus utilisation %',
             '  on <name|addr>                    — shortcut: ACTIVATE',
             '  off <name|addr>                   — shortcut: DEACTIVATE',
@@ -223,11 +250,20 @@ export async function runRepl(transport, options = {}) {
                     process.stdout.write('No modules loaded (provide --omp).\n');
                     return;
                 }
+                const byClu = new Map();
                 for (const m of ompModules) {
-                    const entry = addrIndex.get(m.addr)?.entry ?? null;
-                    const type = entry?.name ?? `hwType=0x${m.hwType.toString(16)}`;
-                    const names = m.ioNames.slice(0, 3).join(', ') + (m.ioNames.length > 3 ? ` +${m.ioNames.length - 3}` : '');
-                    process.stdout.write(`  addr=${String(m.addr).padStart(2, '0')}  ${type.padEnd(24)}  serial=${m.serialHex}  [${names}]\n`);
+                    const key = m.cluSerial ?? '(unknown)';
+                    if (!byClu.has(key)) byClu.set(key, []);
+                    byClu.get(key).push(m);
+                }
+                for (const [cluSerial, modules] of byClu) {
+                    process.stdout.write(`CLU ${cluSerial}:\n`);
+                    for (const m of modules) {
+                        const entry = findByFields(transcript, m.hwType, m.fwVer);
+                        const type = entry?.name ?? `hwType=0x${m.hwType.toString(16)}`;
+                        const names = m.ioNames.slice(0, 3).join(', ') + (m.ioNames.length > 3 ? ` +${m.ioNames.length - 3}` : '');
+                        process.stdout.write(`  addr=${String(m.addr).padStart(2, '0')}  ${type.padEnd(24)}  serial=${m.serialHex}  [${names}]\n`);
+                    }
                 }
                 break;
             }
@@ -237,8 +273,8 @@ export async function runRepl(transport, options = {}) {
                     process.stdout.write(`Unknown target: ${args[0]}\n`);
                     return;
                 }
-                const hit = addrIndex.get(t.addr);
-                process.stdout.write(`addr=${t.addr}  label=${t.label}\n`);
+                const hit = addrIndex.get(`${t.cluSerial}:${t.addr}`);
+                process.stdout.write(`addr=${t.addr}  clu=${t.cluSerial ?? '?'}  label=${t.label}\n`);
                 if (hit) {
                     const m = hit.module;
                     process.stdout.write(`  serial=${m.serialHex}  hwType=0x${m.hwType.toString(16)}  fwType=${m.fwType}  fwVer=${m.fwVer}\n`);
@@ -452,8 +488,10 @@ export async function runRepl(transport, options = {}) {
                 if (!args[0] || firstIsSeconds) {
                     const secs = firstIsSeconds ? Math.max(1, parseInt(args[0], 10)) : 5;
                     const globalLabel = (addr) => {
-                        const hit = addrIndex.get(addr);
-                        return hit ? (hit.module.ioNames[0] ?? hit.entry?.name ?? `addr=${addr}`) : `addr=${addr}`;
+                        const matches = addrByAddr.get(addr);
+                        const hit = matches?.[0] ?? null;
+                        const prefix = matches?.length > 1 ? `${hit.module.cluSerial}:` : '';
+                        return hit ? `${prefix}${hit.module.ioNames[0] ?? hit.entry?.name ?? `addr=${addr}`}` : `addr=${addr}`;
                     };
                     await listenModule(transport, null, globalLabel, secs);
                 }

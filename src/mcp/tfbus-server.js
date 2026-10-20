@@ -13,14 +13,16 @@ export function createServer({ defaultPort = null } = {}) {
     inputSchema: {
       port:       z.string().optional().describe('Serial port path, e.g. /dev/ttyUSB0 or COM3'),
       durationMs: z.number().optional().describe('Capture duration in ms (default 5000)'),
+      filter:     z.boolean().optional().describe('Drop STATUS_POLL pings and unchanged status responses (default true)'),
+      addr:       z.number().int().optional().describe('Capture only frames for this module address (CLU↔module pair). Use filter:false to also see STATUS_POLL TX frames.'),
     },
-  }, async ({ port: callPort, durationMs = 5000 }) => {
+  }, async ({ port: callPort, durationMs = 5000, filter = true, addr = null }) => {
     const port = callPort ?? defaultPort;
     if (!port) return { content: [{ type: 'text', text: 'Error: port required' }], isError: true };
     const transport = new SerialTransport(port);
     try {
       await transport.open();
-      const events = await sniffBus(transport, { durationMs });
+      const events = await sniffBus(transport, { durationMs, filter, addr });
       return { content: [{ type: 'text', text: JSON.stringify(events, null, 2) }] };
     } catch (e) {
       return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };

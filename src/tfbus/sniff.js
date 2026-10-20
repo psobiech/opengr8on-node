@@ -20,7 +20,7 @@ import { parseBusTxFrame } from './TFBusFrame.js';
  * @param {{ durationMs?: number }} [options]
  * @returns {Promise<SniffEvent[]>}
  */
-export async function sniffBus(transport, { durationMs = 5000 } = {}) {
+export async function sniffBus(transport, { durationMs = 5000, filter = true, addr = null } = {}) {
   const bus = new TFBusEventBus(transport);
   const events = [];
   let lastRxBuf = null;
@@ -107,5 +107,26 @@ export async function sniffBus(transport, { durationMs = 5000 } = {}) {
   await new Promise(r => setTimeout(r, durationMs));
   bus.stop();
 
-  return events;
+  const result = filter ? filterIdle(events) : events;
+  return addr !== null ? result.filter(e => e.addr === addr) : result;
+}
+
+/**
+ * Remove STATUS_POLL TX pings and status responses whose records haven't
+ * changed since the last status from the same address.
+ *
+ * @param {SniffEvent[]} events
+ * @returns {SniffEvent[]}
+ */
+function filterIdle(events) {
+  const lastStatus = new Map();
+  return events.filter(e => {
+    if (e.event === 'tx' && e.type === 0x04) return false;
+    if (e.event === 'status') {
+      const key = JSON.stringify(e.data?.records ?? null);
+      if (lastStatus.get(e.addr) === key) return false;
+      lastStatus.set(e.addr, key);
+    }
+    return true;
+  });
 }

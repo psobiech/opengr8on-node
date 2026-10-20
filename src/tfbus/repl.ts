@@ -266,7 +266,12 @@ export async function runRepl(transport: TFBusTransport, options: ReplOptions = 
     ].join('\n'));
   }
 
+  const SERIAL_CMDS = new Set(['get', 'status', 'version', 'set', 'execute', 'exec', 'on', 'off', 'listen', 'busload']);
+
   async function dispatch(cmd: string, args: string[]) {
+    const needsSerial = SERIAL_CMDS.has(cmd);
+    if (needsSerial) await transport.open();
+    try {
     switch (cmd) {
       case 'list':
       case 'ls': {
@@ -482,6 +487,9 @@ export async function runRepl(transport: TFBusTransport, options: ReplOptions = 
 
       default:
         process.stdout.write(`Unknown command: ${cmd}. Type 'help' for usage.\n`);
+    }
+    } finally {
+      if (needsSerial) await transport.close();
     }
   }
 

@@ -19,8 +19,6 @@ const baud = parseInt(argValue('--baud') ?? '115200', 10);
 const ompArg = argValue('--omp');
 
 const transport = new SerialTransport(port, { baudRate: baud, rxTimeoutMs: 300 });
-process.stdout.write(`Opening ${port} @ ${baud} baud…\n`);
-await transport.open();
 
 process.on('SIGINT', async () => {
   process.stdout.write('\nShutting down…\n');

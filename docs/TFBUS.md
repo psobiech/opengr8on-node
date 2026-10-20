@@ -138,34 +138,7 @@ Both paths emit the same frame type byte on the wire.
 
 ### Examples
 
-## LED_CMD Frame (type 0x18) — SMART_PANEL_FM_4 LED Control
-
-```
-AA  dest  0x18  btn_mask  0x00  cmd_byte  XOR_crc     (7 bytes total)
-```
-
-- `btn_mask`: bit N = button N (0-indexed); value = `1 << button_idx`
-- second payload byte: always `0x00`
-- `cmd_byte`: LED action
-
-| cmd_byte | Command | Effect |
-|----------|---------|--------|
-| `0x00` | ShowOK | Green LED flash |
-| `0x01` | ShowError | Red LED flash |
-| `0x02` | LedSwitchOn | LED on (steady) |
-| `0x04` | LedSwitchOff | LED off — **not** `0x03` |
-| `0x10` | RedLedSwitchOn | Red LED on (steady) |
-
-Example captures (dest=0x14, button 4 = bit 3 = mask 0x08):
-```
-ShowOK        aa 14 18 01 00 00 a7   (btn1, mask=0x01)
-ShowError     aa 14 18 08 00 01 af   (btn4, mask=0x08)
-LedSwitchOn   aa 14 18 08 00 02 ac
-LedSwitchOff  aa 14 18 08 00 04 aa
-RedLedSwitchOn aa 14 18 08 00 10 be
-```
-
-Frame length: 7 bytes. Parser detects by CRC-scanning lengths 7–15.
+See [TFBUS_SMART_PANEL_FM_4.md](TFBUS_SMART_PANEL_FM_4.md) for LED_CMD (type 0x18) wire examples.
 
 ---
 
@@ -256,35 +229,14 @@ The same TLV format and type codes are used in **both directions** — STATUS_PO
 
 ### Per-Module Protocol Sequences
 
-**IO_MODULE_DIN_8** — 2-phase init:
-- Phase 1 (relay outputs, ch 0–7 each): `DEACTIVATE` + `MODULE_PARAM [0, ch, 1, 0]`
-- Phase 2 (DIN inputs, ch 0–7 each): `CHANNEL_INIT [0x00, ch, 0]` + `MODULE_PARAM [0, ch, 0, 0]`
-- Runtime: periodic `CHANNEL_INIT` + `CHANNEL_MAP` per input channel (descending order)
-
-**RELAY_DIN_4** — per relay channel:
-`DEACTIVATE` + `CHANNEL_MAP [ch, 0x02]` + `MODULE_PARAM [0, ch, 1, 0]`
-- Runtime: periodic `CHANNEL_MAP [ch, 0x02]` for all channels (descending)
-
-**ROLLER_SH_DIN_3** — per logical roller channel (1-based):
-1. `CHANNEL_INIT [0x16, ch, 0]`
-2. `FEATURE_PARAM ×4` (compact_idx 0,2,3 = configured values; idx 1 = 0)
-3. `MODULE_PARAM [0, ch-1, 1, 0]`
-4. `ROLLER_CHAN_REG [0, ch]`
-- Runtime refresh: 2-record `CHANNEL_MAP` (up/dn relay pair) + 2-record `FEATURE_PARAM [idx0,ch]+[idx1,ch,0,0]` + single FEATURE_PARAM for idx 2 and 3 + `CHANNEL_INIT` + `ROLLER_CHAN_REG`
-
-**LED_RGBW_DIN** — one-shot init:
-1. `SET_RAMP_TIME` (type=0x06; default ramp=0ms for RGBW)
-2. count=4 batch: `SET_CHANNEL_VALUE [0,R] [1,G] [2,B] [3,W]` (type=0x05, meta=0x10, values 0–255)
-
-**DIMMER_MOSFET_DIN** — SetValue sequence:
-1. `SET_RAMP_TIME` (type=0x06; default 500ms)
-2. `DIMMER_SET_VALUE` (type=0x0c; LE u16 scale 0–1000)
-
-**TOUCH_PANEL_FM_4** — init:
-1. 4× `SET_OUTPUT [1<<btn, 0, 0]` (LED init=off) + `MODULE_PARAM [0, btn, 0, 0]`
-2. `SENSOR_SENSITIVITY` records (2 per sensor: PANELSENSTEMP=0x07, PANELSENSLIGHT=0x08)
-3. `SET_MODE [mode]`
-- Runtime refresh: SET_MODE + partial SENSOR_SENSITIVITY + SET_OUTPUT ×4 + BUTTON_HOLDDELAY
+See individual module files for init sequences and wire examples:
+- [TFBUS_LED_RGBW_DIN.md](TFBUS_LED_RGBW_DIN.md)
+- [TFBUS_RELAY_DIN_4.md](TFBUS_RELAY_DIN_4.md)
+- [TFBUS_ROLLER_SH_DIN_3.md](TFBUS_ROLLER_SH_DIN_3.md)
+- [TFBUS_IO_MODULE_DIN_8.md](TFBUS_IO_MODULE_DIN_8.md)
+- [TFBUS_DIMMER_MOSFET_DIN.md](TFBUS_DIMMER_MOSFET_DIN.md)
+- [TFBUS_TOUCH_PANEL_FM_4.md](TFBUS_TOUCH_PANEL_FM_4.md)
+- [TFBUS_SMART_PANEL_FM_4.md](TFBUS_SMART_PANEL_FM_4.md)
 
 ### Wire Examples
 
@@ -380,40 +332,7 @@ One physical button press queues multiple events (OnSwitchOn → OnShortPress �
 
 **Button numbering**: row-major order — top-left → top-right → bottom-left → bottom-right = indices 0→1→2→3.
 
-### IO_MODULE_DIN_8 Payload (14 bytes)
-
-```
-03
-  00 01 [meta] [inp_byte]      8 digital inputs — bit N = input N active
-  01 01 [meta] [state]         output state (0=idle)
-  02 02 [meta] [LO] [HI]       temperature LE uint16 ÷ 100 = °C
-```
-
-Example: `03 00 01 01 00 01 01 01 00 02 02 10 6c 09`
-→ inputs=0x00 (all off), state=idle, temp=0x096C=2412→**24.12°C**
-
-### ROLLER_SH_DIN_3 Payload (23 bytes)
-
-```
-04
-  01 01 [meta] [state]
-  16 03 [meta] [inst] [pos%] [flags]   roller channel 0
-  16 03 [meta] [inst] [pos%] [flags]   roller channel 1
-  16 03 [meta] [inst] [pos%] [flags]   roller channel 2
-```
-
-Type 0x16 fields: `instance(u8)` = 1-based channel index, `pos%(u8)` = 0–100%, `flags(u8)` = motion/error flags (0=stopped).
-
-### SMART_PANEL_FM_4 Idle Bitmask Payload (13 bytes, non-TLV)
-
-```
-bytes[0–1]   LE u16  button bitmask: bit N = instance N active
-bytes[2–3]   LE u16  edge bitmask: non-zero on press start, 0 on press end
-bytes[4–5]   LE u16  PANELSENSLIGHT (ambient light ×100)
-bytes[6–7]   LE u16  unknown
-bytes[8–11]          zeros
-bytes[12]            0x02 flag
-```
+See [TFBUS_IO_MODULE_DIN_8.md](TFBUS_IO_MODULE_DIN_8.md), [TFBUS_ROLLER_SH_DIN_3.md](TFBUS_ROLLER_SH_DIN_3.md), [TFBUS_SMART_PANEL_FM_4.md](TFBUS_SMART_PANEL_FM_4.md) for module-specific payload formats.
 
 ### Temperature Encoding
 

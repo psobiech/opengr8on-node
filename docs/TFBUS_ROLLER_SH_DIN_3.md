@@ -47,7 +47,10 @@ Known flag values:
 
 Type 0x01 state byte:
 - `0x00` — stopped
-- `0x10` — SET_POSITION in progress (motor running)
+- `0x01` — moving up (normal: MoveUp / SetPosition going up)
+- `0x02` — moving down (normal: MoveDown / SetPosition going down)
+- `0x10` — moving up in calibration mode (execute(8, 1))
+- `0x20` — moving down in calibration mode (execute(8, 0)) or SetPosition (observed)
 
 ---
 
@@ -64,7 +67,7 @@ setpos 41%:   aa 07 f0  08 01 16 03 00 00 03 29  6b  SET_POSITION ch3 → 41%
 
 Source of truth: `docs/device-interfaces/module_2_0_ROLLER_SHUTTER_DIN_3_fv02_02.xml`
 
-Object nameOnCLU: per-channel (e.g. `ROL5074` for ch3 of ROLETY4 module).
+Object nameOnCLU: one per ROLLER_SHUTTER object in the project (one per channel).
 
 **Features (get-only unless noted):**
 
@@ -98,27 +101,63 @@ Object nameOnCLU: per-channel (e.g. `ROL5074` for ch3 of ROLETY4 module).
 
 Position convention (`RemoteCLUShutter.java`): `OPEN_POSITION=100`, `CLOSE_POSITION=0`.
 
-**Note on `execute(10, N)` vs physical state:**
-On the real CLU, `execute(10, N)` updates the CLU's position counter and the module's
-STATUS_POLL position byte instantly (no motor run) — flags become `0x5a`.
-Physical motor movement shows gradual position change over time — flags become `0x00` on stop.
+**`execute(10, N)` — SetPosition behaviour depends on calibration state:**
 
-### Tested module: ROLETY4 on CLU_1, ttyUSB1, bus addr=7
+- `flags=0x5a` (position uncertain): CLU-only update — position jumps instantly, no motor. Module doesn't know real position so refuses to drive.
+- `flags=0x00` (position known, after calibration): physical motor runs — position changes gradually ~1%/250ms, state byte = `0x20` (moving down) or `0x10` (moving up).
 
-STATUS_POLL hex confirmed (stopped state):
+**Prerequisite for physical movement:** run `execute(8, 1)` (Calibration Up) or `execute(8, 0)` (Calibration Down) first to establish known position. Calibration drives motor to the physical limit and sets flags=0x00.
+
+Calibration behaviour on bus:
+- Position counter **does not update** during calibration — stays frozen at starting value
+- CLU runs motor for `MaxTime × (100% - startPos) / 100` milliseconds (time-based, no endstop detection)
+- Motor runs against physical endstop for remaining time if it arrives early
+- On completion: position **jumps instantly to 100%** (or 0% for Down calibration), state→0x00, flags→0x00
+
+Physical movement signature: gradual position change + state=0x01/0x02 (or 0x10 for calibration).
+CLU-only update signature: instant position jump + state=0x00.
+
+Note on flags=0x5a + physical movement: a module with flags=0x5a CAN still run the motor if it has some prior position tracking. Flags=0x5a means position estimate is uncertain (not anchored to a physical limit), not necessarily that motor is locked. Full motor lockout (CLU-only update) occurs only when the module has no position track at all — typically after power-on with no prior calibration.
+
+---
+
+## STATUS_POLL Examples
+
+Stopped (mixed calibration state):
 ```
 aa 00 18 04
-  01 01 02 00          state=0x00 (stopped), meta=0x02
+  01 01 02 00          state=0x00
   16 03 00 01 64 00    ch1 pos=100% flags=0x00
   16 03 00 02 00 5a    ch2 pos=0%   flags=0x5a
-  16 03 00 03 22 5a    ch3 pos=34%  flags=0x5a  ← ROL5074 initial
+  16 03 00 03 22 5a    ch3 pos=34%  flags=0x5a
 ```
 
-STATUS_POLL hex confirmed (moving state, ch3 counting up):
+Calibration running (ch3 moving up, execute(8, 1)):
 ```
 aa 00 18 04
-  01 01 02 10          state=0x10 (moving)
+  01 01 02 10          state=0x10 (calibration up)
   16 03 00 01 64 00    ch1 pos=100% flags=0x00
   16 03 00 02 00 5a    ch2 pos=0%   flags=0x5a
-  16 03 00 03 2b 5a    ch3 pos=43%  flags=0x5a  ← counting toward target
+  16 03 00 03 2b 5a    ch3 pos=43%  flags=0x5a  ← frozen at start, not updating
 ```
+
+SetPosition physical move (ch3 moving down, execute(8,1) then execute(10,50)):
+```
+aa 00 18 04
+  01 01 02 20          state=0x20 (moving down)
+  16 03 00 01 64 00    ch1 pos=100% flags=0x00
+  16 03 00 02 00 5a    ch2 pos=0%   flags=0x5a
+  16 03 00 03 63 00    ch3 pos=99%  flags=0x00  ← ~1%/250ms descent
+  ...
+  16 03 00 03 32 00    ch3 pos=50%  flags=0x00  ← stopped at target
+```
+
+Stop mid-motion (execute(3)):
+```
+aa 00 18 04
+  01 01 02 00          state=0x00  ← immediate, first STATUS_POLL after stop
+  16 03 00 01 64 00    ch1 pos=100% flags=0x00
+  16 03 00 02 00 5a    ch2 pos=0%   flags=0x5a
+  16 03 00 03 2c 00    ch3 pos=44%  flags=0x00  ← position preserved
+```
+Stop takes effect within one STATUS_POLL cycle (~120ms).

@@ -9,7 +9,8 @@ import { CLUDevice } from '../device/CLUDevice.js';
 // @ts-ignore
 import { CipherKey } from '../CipherKey.js';
 // @ts-ignore
-import { readAllObjects } from '../parsers/omp/OmpReader.js';
+import { readAllObjects, readTFBusModules } from '../parsers/omp/OmpReader.js';
+import type { TFBusModuleInfo } from '../parsers/omp/OmpReader.js';
 // @ts-ignore
 import { InterfaceRegistry } from '../parsers/interfaces/InterfaceRegistry.js';
 
@@ -57,14 +58,22 @@ function buildTypeMap(ir: any): Map<string, { features: Feature[]; methods: Meth
   const map = new Map<string, { features: Feature[]; methods: Method[] }>();
 
   // from module firmware objects (DIMM, DOUT, ROLLER_SHUTTER, …)
+  // Sort ascending by firmware version so the highest version wins (last-write).
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-  for (const mod of (ir.allModules() as unknown[])) {
+  const sortedModules = (ir.allModules() as unknown[]).slice().sort((a, b) => {
+    const fwVer = (m: unknown) => {
+      const fw = (m as Record<string, unknown>)['firmware'] as Record<string, unknown> | null;
+      return parseInt((fw?.['version'] as string | undefined) ?? '0', 16);
+    };
+    return fwVer(a) - fwVer(b);
+  });
+  for (const mod of sortedModules) {
     const m = mod as Record<string, unknown>;
     const fw = m['firmware'] as Record<string, unknown> | null;
     for (const obj of (fw?.['objects'] as unknown[] ?? [])) {
       const o = obj as Record<string, unknown>;
       const n = o['name'] as string | undefined;
-      if (n && !map.has(n)) {
+      if (n) {
         const iface = o['interface'] as Record<string, unknown> | undefined;
         map.set(n, {
           features: (iface?.['features'] as Feature[] | undefined) ?? [],
@@ -90,6 +99,42 @@ function buildTypeMap(ir: any): Map<string, { features: Feature[]; methods: Meth
   return map;
 }
 
+interface IoResEntry { hwType: number; fwType: number; fwVer: number; ioClass: number; }
+
+function buildIoResolutionMap(ompFile: string): Map<string, IoResEntry> {
+  const map = new Map<string, IoResEntry>();
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  const modules = readTFBusModules(ompFile) as TFBusModuleInfo[];
+  for (const mod of modules) {
+    for (const io of mod.ios) {
+      map.set(io.name, { hwType: mod.hwType, fwType: mod.fwType, fwVer: mod.fwVer, ioClass: io.ioClass });
+    }
+  }
+  return map;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function resolveIface(ir: any, ioRes: Map<string, IoResEntry>, typeMap: Map<string, { features: Feature[]; methods: Method[] }>, friendlyName: string, typeName: string): { features: Feature[]; methods: Method[] } {
+  const res = ioRes.get(friendlyName);
+  if (res) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    const mod = ir.getModule(res.hwType, res.fwType, res.fwVer) as Record<string, unknown> | null;
+    if (mod) {
+      const fw = mod['firmware'] as Record<string, unknown> | null;
+      const objs = (fw?.['objects'] as unknown[] | undefined) ?? [];
+      const match = objs.find(o => parseInt((o as Record<string, unknown>)['class'] as string ?? '-1', 10) === res.ioClass) as Record<string, unknown> | undefined;
+      if (match) {
+        const iface = match['interface'] as Record<string, unknown> | undefined;
+        return {
+          features: (iface?.['features'] as Feature[] | undefined) ?? [],
+          methods:  (iface?.['methods']  as Method[]  | undefined) ?? [],
+        };
+      }
+    }
+  }
+  return typeMap.get(typeName) ?? { features: [], methods: [] };
+}
+
 export async function runCluRepl(options: CluReplOptions): Promise<void> {
   const { ompFile, localAddress, cluPort } = options;
   const interfacesDir = resolve(options.interfacesDir ?? 'docs/device-interfaces');
@@ -99,6 +144,7 @@ export async function runCluRepl(options: CluReplOptions): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
   const ir = InterfaceRegistry.fromDirectory(interfacesDir) as unknown;
   const typeMap = buildTypeMap(ir);
+  const ioResMap = buildIoResolutionMap(ompFile);
 
   // ─── Load all objects from OMP ─────────────────────────────────────────────
   // CLU hardware nodes are identified by ipAddress (only CLUs have it).
@@ -146,13 +192,13 @@ export async function runCluRepl(options: CluReplOptions): Promise<void> {
     const cluName = cluRaw ? textOf(cluRaw['name']) : '';
     if (!cluName) continue;
 
-    const iface = typeMap.get(typeName);
+    const iface = resolveIface(ir, ioResMap, typeMap, friendlyName, typeName);
     const entry: ObjectEntry = {
       friendlyName,
       nameOnClu,
       typeName,
-      features: iface?.features ?? [],
-      methods:  iface?.methods  ?? [],
+      features: iface.features,
+      methods:  iface.methods,
     };
 
     if (!devicesByClu.has(cluName)) devicesByClu.set(cluName, new Map());

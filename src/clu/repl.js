@@ -8,7 +8,7 @@ import { CLUDevice } from '../device/CLUDevice.js';
 // @ts-ignore
 import { CipherKey } from '../CipherKey.js';
 // @ts-ignore
-import { readAllObjects } from '../parsers/omp/OmpReader.js';
+import { readAllObjects, readTFBusModules } from '../parsers/omp/OmpReader.js';
 // @ts-ignore
 import { InterfaceRegistry } from '../parsers/interfaces/InterfaceRegistry.js';
 function textOf(node) {
@@ -22,14 +22,22 @@ function textOf(node) {
 function buildTypeMap(ir) {
     const map = new Map();
     // from module firmware objects (DIMM, DOUT, ROLLER_SHUTTER, …)
+    // Sort ascending by firmware version so the highest version wins (last-write).
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    for (const mod of ir.allModules()) {
+    const sortedModules = ir.allModules().slice().sort((a, b) => {
+        const fwVer = (m) => {
+            const fw = m['firmware'];
+            return parseInt(fw?.['version'] ?? '0', 16);
+        };
+        return fwVer(a) - fwVer(b);
+    });
+    for (const mod of sortedModules) {
         const m = mod;
         const fw = m['firmware'];
         for (const obj of (fw?.['objects'] ?? [])) {
             const o = obj;
             const n = o['name'];
-            if (n && !map.has(n)) {
+            if (n) {
                 const iface = o['interface'];
                 map.set(n, {
                     features: iface?.['features'] ?? [],
@@ -52,6 +60,38 @@ function buildTypeMap(ir) {
     }
     return map;
 }
+function buildIoResolutionMap(ompFile) {
+    const map = new Map();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    const modules = readTFBusModules(ompFile);
+    for (const mod of modules) {
+        for (const io of mod.ios) {
+            map.set(io.name, { hwType: mod.hwType, fwType: mod.fwType, fwVer: mod.fwVer, ioClass: io.ioClass });
+        }
+    }
+    return map;
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function resolveIface(ir, ioRes, typeMap, friendlyName, typeName) {
+    const res = ioRes.get(friendlyName);
+    if (res) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        const mod = ir.getModule(res.hwType, res.fwType, res.fwVer);
+        if (mod) {
+            const fw = mod['firmware'];
+            const objs = fw?.['objects'] ?? [];
+            const match = objs.find(o => parseInt(o['class'] ?? '-1', 10) === res.ioClass);
+            if (match) {
+                const iface = match['interface'];
+                return {
+                    features: iface?.['features'] ?? [],
+                    methods: iface?.['methods'] ?? [],
+                };
+            }
+        }
+    }
+    return typeMap.get(typeName) ?? { features: [], methods: [] };
+}
 export async function runCluRepl(options) {
     const { ompFile, localAddress, cluPort } = options;
     const interfacesDir = resolve(options.interfacesDir ?? 'docs/device-interfaces');
@@ -59,6 +99,7 @@ export async function runCluRepl(options) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     const ir = InterfaceRegistry.fromDirectory(interfacesDir);
     const typeMap = buildTypeMap(ir);
+    const ioResMap = buildIoResolutionMap(ompFile);
     // ─── Load all objects from OMP ─────────────────────────────────────────────
     // CLU hardware nodes are identified by ipAddress (only CLUs have it).
     // Device objects are identified by nameOnCLU + their clu.name back-reference.
@@ -98,13 +139,13 @@ export async function runCluRepl(options) {
         const cluName = cluRaw ? textOf(cluRaw['name']) : '';
         if (!cluName)
             continue;
-        const iface = typeMap.get(typeName);
+        const iface = resolveIface(ir, ioResMap, typeMap, friendlyName, typeName);
         const entry = {
             friendlyName,
             nameOnClu,
             typeName,
-            features: iface?.features ?? [],
-            methods: iface?.methods ?? [],
+            features: iface.features,
+            methods: iface.methods,
         };
         if (!devicesByClu.has(cluName))
             devicesByClu.set(cluName, new Map());

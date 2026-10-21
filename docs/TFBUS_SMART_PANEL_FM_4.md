@@ -99,7 +99,58 @@ aa 00 0b 02  06 01 01 00  07 02 10 dc 00  6c
 
 ### Sensor Periodicity
 
-The module self-samples on a ~1.25 s schedule regardless of CLU commands. Each cycle: one temperature frame, then one light frame (one STATUS_POLL cycle = ~113 ms apart). Between cycles the module sends only the 1-record baseline frame.
+Temperature (type=0x02) self-samples on a ~1.25 s schedule regardless of CLU commands. Between cycles the module sends only the 1-record baseline frame.
+
+Light sensor (type=0x07) behavior is firmware-variant dependent. On some units, a light frame follows each temperature frame (~113 ms apart). On others, type=0x07 is never emitted in STATUS_POLL even when the CLU-reported light value changes — the CLU may obtain the light reading via a MODULE_CMD channel not visible in STATUS_POLL sniffs. Capture type=0x07 opportunistically; absence does not indicate sensor failure.
+
+### Button Press Frame (type=0x08, edge, one cycle only)
+
+```
+aa 00 0b 02  06 01 01 00  08 02 10 1c 00  a3
+                          │  │  │  └─┘
+                          │  │  │   └── VAL=0x1C=28, 0x00 (always zero)
+                          │  │  └────── meta = 0x10
+                          │  └──────── len = 2
+                          └─────────── type = 0x08 (button identity event)
+```
+
+**Encoding**: `VAL = btn_idx × 7 + event_id`
+- `btn_idx = VAL / 7` (integer divide) → which button, 0-indexed
+- `event_id = VAL % 7` → event type
+
+| event_id | Name |
+|----------|------|
+| 0 | OnChange |
+| 1 | OnSwitchOn |
+| 2 | OnSwitchOff |
+| 3 | OnShortPress |
+| 4 | OnLongPress |
+| 5 | OnHold |
+| 6 | OnClick |
+
+**btn_idx = button object index (0-based), NOT physical slot position.** Physical slot → btn_idx depends on the active page's `Object_N_Id` assignment. On a page with default/inactive configuration assigning buttons 1–4 to slots 1–4, the row-major mapping holds:
+
+| Physical slot | btn_idx (page default) |
+|--------------|----------------------|
+| top-left | 0 |
+| top-right | 1 |
+| bottom-left | 2 |
+| bottom-right | 3 |
+
+On a page that assigns e.g. button 5 to slot 1, pressing physical top-left produces btn_idx=4. Verify by reading active page's `Object_N_Id` if unexpected btn_idx values appear.
+
+One physical press queues multiple events (OnSwitchOn → OnShortPress → OnClick → OnChange), drained one per poll cycle (~780 ms each), draining over 3–5 cycles.
+
+**Decoded examples (page with buttons 1–4 assigned to slots 1–4):**
+
+| VAL (hex) | btn_idx | event_id | Event |
+|-----------|---------|----------|-------|
+| 0x01 (1) | 0 | 1 | top-left, OnSwitchOn |
+| 0x08 (8) | 1 | 1 | top-right, OnSwitchOn |
+| 0x0F (15) | 2 | 1 | bottom-left, OnSwitchOn |
+| 0x16 (22) | 3 | 1 | bottom-right, OnSwitchOn |
+
+---
 
 ### Observed Wire Values
 
@@ -108,6 +159,9 @@ The module self-samples on a ~1.25 s schedule regardless of CLU commands. Each c
 | 0x02 | `2409` | 2340 | 21.70 °C | Panel surface; ~1.7 °C above ambient |
 | 0x07 | `dc00` | 220 | 1.50 % | Light sensor; raw-to-% conversion non-linear |
 | 0x07 | `da00` | 218 | — | Natural light sensor variation |
+| 0x08 | `0f00` | VAL=15 | bottom-left OnSwitchOn | btn_idx=2 (Button 3 assigned to slot 3) |
+| 0x08 | `1500` | VAL=21 | bottom-right OnChange | btn_idx=3 (Button 4 assigned to slot 4) |
+| 0x08 | `2000` | VAL=32 | page-2 top-left OnLongPress | btn_idx=4 (Button 5 assigned to page 2 slot 1) |
 
 ---
 

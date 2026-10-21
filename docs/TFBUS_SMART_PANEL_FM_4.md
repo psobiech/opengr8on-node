@@ -306,6 +306,20 @@ Events: OnChange(0), OnRaiseValue(1), OnLowerValue(2), OnOutOfRange(3)
 
 ---
 
+## Display Draw Timeout
+
+If draw operations (PrintText, DrawLine, DrawIcon, etc.) are issued but `.Draw()` /
+`DisplayContent` is **not** invoked within the timeout window, the panel displays
+`! TIMEOUT !` on screen.
+
+Always call `Draw` / `DisplayContent` after issuing display commands.
+
+The panel displays `! NO CLU !` when it enters distributed logic group mode (no CLU ownership over TFBUS).
+
+See also: [SMARTPANEL_FW_FORMAT.md](SMARTPANEL_FW_FORMAT.md) — firmware update file format and binary analysis.
+
+---
+
 ## Multi-CLU Note
 
 Secondary CLU (TCP-notified) receives button event type=0x07 only — all buttons appear identical (no identity). Button identity (event type=0x08) is only available to the primary CLU owning the RS485 bus.

@@ -1,6 +1,9 @@
 # SMARTPANEL Firmware Update Format
 
-Analysis of `upload/03/03/020c.fw` and siblings (6 variants, 7.0.6.2345).
+Firmware for the **SMART_PANEL_FM_4** (4-button panel with OLED display).  
+Source: `upload/03/03/020c.fw` and siblings — 6 hardware revision variants, version 7.0.6.2345.
+
+See also: [TFBUS_SMART_PANEL_FM_4.md](TFBUS_SMART_PANEL_FM_4.md)
 
 ---
 
@@ -124,8 +127,8 @@ Strings and code analysis reveal:
 - `Cool` / `Heat` / `Auto` / `Dsyn` — four HVAC mode labels
 
 ### CLU Integration (TFBUS RS485)
-- `! NO CLU !` — displayed when TFBUS link absent
-- `! TIMEOUT !` — displayed on CLU communication timeout
+- `! NO CLU !` — displayed when panel enters distributed logic group mode (no CLU ownership)
+- `! TIMEOUT !` — displayed when draw operations are issued but `.Draw()` is not invoked within the time limit (draw timeout, not a comms timeout)
 - `GRENTON` string at `0x2083BE` — used in protocol identification
 
 ### Bootloader / OTA

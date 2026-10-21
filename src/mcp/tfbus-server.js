@@ -11,14 +11,13 @@ export function createServer({ defaultPort = null } = {}) {
   server.registerTool('tfbus_sniff', {
     description: 'Passively capture RS485 TFBus frames from a serial port. Returns a JSON array of decoded events.',
     inputSchema: {
-      port:       z.string().optional().describe('Serial port path, e.g. /dev/ttyUSB0 or COM3'),
       durationMs: z.number().optional().describe('Capture duration in ms (default 5000)'),
       filter:     z.boolean().optional().describe('Drop STATUS_POLL pings and unchanged status responses (default true)'),
       addr:       z.number().int().optional().describe('Capture only frames for this module address (CLU↔module pair). Use filter:false to also see STATUS_POLL TX frames.'),
     },
-  }, async ({ port: callPort, durationMs = 5000, filter = true, addr = null }) => {
-    const port = callPort ?? defaultPort;
-    if (!port) return { content: [{ type: 'text', text: 'Error: port required' }], isError: true };
+  }, async ({ durationMs = 5000, filter = true, addr = null }) => {
+    const port = defaultPort;
+    if (!port) return { content: [{ type: 'text', text: 'Error: --port required at startup' }], isError: true };
     const transport = new SerialTransport(port);
     try {
       await transport.open();

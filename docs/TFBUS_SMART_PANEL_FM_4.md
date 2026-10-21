@@ -157,11 +157,23 @@ One physical press queues multiple events (OnSwitchOn → OnShortPress → OnCli
 | TLV type | data (hex) | LE int16 | CLU value | Notes |
 |----------|-----------|----------|-----------|-------|
 | 0x02 | `2409` | 2340 | 21.70 °C | Panel surface; ~1.7 °C above ambient |
+| 0x02 | `1009` | 2320 | ~21.5 °C | |
+| 0x02 | `1a09` | 2330 | ~21.6 °C | |
 | 0x07 | `dc00` | 220 | 1.50 % | Light sensor; raw-to-% conversion non-linear |
 | 0x07 | `da00` | 218 | — | Natural light sensor variation |
+| 0x07 | `d700` | 215 | — | |
+| 0x07 | `d800` | 216 | — | |
 | 0x08 | `0f00` | VAL=15 | bottom-left OnSwitchOn | btn_idx=2 (Button 3 assigned to slot 3) |
+| 0x08 | `1100` | VAL=17 | bottom-left OnShortPress | btn_idx=2, event_id=3 |
+| 0x08 | `1200` | VAL=18 | bottom-left OnLongPress | btn_idx=2, event_id=4 |
 | 0x08 | `1500` | VAL=21 | bottom-right OnChange | btn_idx=3 (Button 4 assigned to slot 4) |
 | 0x08 | `2000` | VAL=32 | page-2 top-left OnLongPress | btn_idx=4 (Button 5 assigned to page 2 slot 1) |
+
+Multiple record types can appear in one frame. Example — light + button event together:
+```
+aa 00 10 03  06 01 01 00  07 02 10 d7 00  08 02 10 12 00  75
+             baseline     light=215       button VAL=18(OnLongPress)
+```
 
 ---
 
@@ -306,13 +318,24 @@ Events: OnChange(0), OnRaiseValue(1), OnLowerValue(2), OnOutOfRange(3)
 
 ---
 
-## Display Draw Timeout
+## Display Draw Sequence
 
-If draw operations (PrintText, DrawLine, DrawIcon, etc.) are issued but `.Draw()` /
-`DisplayContent` is **not** invoked within the timeout window, the panel displays
-`! TIMEOUT !` on screen.
+Correct sequence to update the display from CLU Lua:
 
-Always call `Draw` / `DisplayContent` after issuing display commands.
+1. `execute(0)` — SwitchOnDisplay (display is off after proximity timeout; must wake it first)
+2. `execute(2)` — ClearScreen
+3. `execute(3, x, y, text, fontSize)` — PrintText (and/or other draw operations)
+4. `execute(7)` — **DisplayContent** — flushes buffer to screen
+
+**DisplayContent (`execute(7)`) is the correct flush command**, not Draw (`execute(29)`). Draw does not render to screen on its own.
+
+**All commands must be sent in a single CLU `execute` call** — separate MCP calls introduce enough latency to trigger the draw timeout between drawing and flush. Use the Lua `or 1` chaining trick (since execute returns nil, which is falsy):
+
+```lua
+(((PAN:execute(0) or 1) and (PAN:execute(2) or 1)) and (PAN:execute(3, 10, 20, "hello", 2) or 1)) and PAN:execute(7)
+```
+
+If draw operations are issued but `DisplayContent` is **not** invoked within the timeout window, the panel displays `! TIMEOUT !` on screen.
 
 The panel displays `! NO CLU !` when it enters distributed logic group mode (no CLU ownership over TFBUS).
 

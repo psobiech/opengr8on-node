@@ -264,223 +264,282 @@ export async function runCluRepl(options: CluReplOptions): Promise<void> {
   // ─── Commands ─────────────────────────────────────────────────────────────
 
   function printHelp() {
+    const single = cluByName.size === 1;
     process.stdout.write([
       '',
-      'Commands:',
-      '  list                                  — list all CLUs',
-      '  objects <clu>                         — list objects on CLU',
-      '  info <clu> <object>                   — show object features & methods',
-      '  get <clu> <object> [feature]          — get object value or specific feature',
-      '  set <clu> <object> <feature> <value>  — set feature by name (Lua literal)',
-      '  call <clu> <object> <method> [args…]  — call method by name',
-      '  exec <clu> <script…>                  — execute arbitrary Lua script',
-      '  help                                  — this text',
-      '  exit / quit                           — exit',
+      'Syntax:',
+      single
+        ? '  OBJECT                          — show object info'
+        : '  CLU.objects                     — list objects on CLU',
+      single
+        ? '  OBJECT.get()                    — get all feature values'
+        : '  CLU.OBJECT                      — show object info',
+      single
+        ? '  OBJECT.get(feature)             — get specific feature'
+        : '  CLU.OBJECT.get()                — get all feature values',
+      single
+        ? '  OBJECT.set(feature, value)      — set feature (Lua literal value)'
+        : '  CLU.OBJECT.get(feature)         — get specific feature',
+      single
+        ? '  OBJECT.method(args…)            — call method'
+        : '  CLU.OBJECT.set(feature, value)  — set feature (Lua literal value)',
+      single
+        ? ''
+        : '  CLU.OBJECT.method(args…)        — call method',
       '',
-    ].join('\n'));
+      'Commands:',
+      '  list / ls                       — list all CLUs',
+      '  exec <clu> <script…>            — execute arbitrary Lua script',
+      '  help                            — this text',
+      '  exit / quit                     — exit',
+      '',
+    ].filter(l => l !== undefined).join('\n'));
   }
 
-  async function dispatch(cmd: string, args: string[], rawLine: string): Promise<void> {
-    switch (cmd) {
+  function parseCallExpr(expr: string): { name: string; args: string[] } {
+    const parenIdx = expr.indexOf('(');
+    if (parenIdx === -1) return { name: expr.trim(), args: [] };
+    const name    = expr.slice(0, parenIdx).trim();
+    const argsStr = expr.slice(parenIdx + 1, expr.lastIndexOf(')')).trim();
+    const args    = argsStr ? argsStr.split(',').map(s => s.trim()) : [];
+    return { name, args };
+  }
 
-      case 'list':
-      case 'ls': {
-        if (cluByName.size === 0) { process.stdout.write('No CLUs found in OMP.\n'); return; }
-        for (const c of cluByName.values()) {
-          process.stdout.write(
-            `  ${c.name.padEnd(16)}  ip=${c.ipAddress.padEnd(15)}  serial=${c.serial}  objects=${c.objects.size}\n`,
-          );
-        }
-        break;
+  function printObjInfo(obj: ObjectEntry): void {
+    process.stdout.write(`  ${obj.friendlyName}  (${obj.typeName})  → ${obj.nameOnClu}\n`);
+    if (obj.features.length) {
+      process.stdout.write('  features:\n');
+      for (const f of obj.features) {
+        const access = (f.get ? 'r' : '') + (f.set ? 'w' : '');
+        process.stdout.write(`    [${f.index}] ${f.name.padEnd(28)} ${access}\n`);
       }
-
-      case 'objects': {
-        const clu = resolveClu(args[0] ?? '');
-        if (!clu) { process.stdout.write(`Unknown CLU: ${args[0] ?? '(none)'}\n`); return; }
-        if (clu.objects.size === 0) { process.stdout.write('No objects found.\n'); return; }
-        const names = [...clu.objects.values()].map(o => o.friendlyName);
-        process.stdout.write(names.join('  ') + '\n');
-        break;
+    }
+    if (obj.methods.length) {
+      process.stdout.write('  methods:\n');
+      for (const m of obj.methods) {
+        const params = m.params.map(p => p.name).join(', ');
+        process.stdout.write(`    [${m.index}] ${m.name}(${params})\n`);
       }
+    }
+  }
 
-      case 'info': {
-        const clu = resolveClu(args[0] ?? '');
-        if (!clu) { process.stdout.write(`Unknown CLU: ${args[0] ?? '(none)'}\n`); return; }
-        const obj = resolveObj(clu, args[1] ?? '');
-        if (!obj) { process.stdout.write(`Unknown object: ${args[1] ?? '(none)'}\n`); return; }
-        process.stdout.write(`  ${obj.friendlyName}  (${obj.typeName})  → ${obj.nameOnClu}\n`);
-        if (obj.features.length) {
-          process.stdout.write('  features:\n');
-          for (const f of obj.features) {
-            const access = (f.get ? 'r' : '') + (f.set ? 'w' : '');
-            process.stdout.write(`    [${f.index}] ${f.name.padEnd(28)} ${access}\n`);
-          }
-        }
-        if (obj.methods.length) {
-          process.stdout.write('  methods:\n');
-          for (const m of obj.methods) {
-            const params = m.params.map(p => p.name).join(', ');
-            process.stdout.write(`    [${m.index}] ${m.name}(${params})\n`);
-          }
-        }
-        break;
-      }
+  async function dispatchDotExpr(clu: CluEntry, objId: string, action: string, actionArgs: string[]): Promise<void> {
+    if (action === 'objects') {
+      if (clu.objects.size === 0) { process.stdout.write('No objects found.\n'); return; }
+      const names = [...clu.objects.values()].map(o => o.friendlyName);
+      process.stdout.write(names.join('  ') + '\n');
+      return;
+    }
 
-      case 'get': {
-        const clu = resolveClu(args[0] ?? '');
-        if (!clu) { process.stdout.write(`Unknown CLU: ${args[0] ?? '(none)'}\n`); return; }
-        const obj = resolveObj(clu, args[1] ?? '');
-        if (!obj) { process.stdout.write(`Unknown object: ${args[1] ?? '(none)'}\n`); return; }
-        const featureName = args[2];
-        let script: string;
-        if (featureName) {
-          const feat = obj.features.find(f => f.name.toLowerCase() === featureName.toLowerCase());
-          if (!feat) {
-            const avail = obj.features.filter(f => f.get).map(f => f.name).join(', ');
-            process.stdout.write(`Unknown feature: ${featureName}. Readable: ${avail || '(none)'}\n`);
-            return;
-          }
-          if (!feat.get) { process.stdout.write(`Feature ${feat.name} is write-only.\n`); return; }
-          script = `${obj.nameOnClu}:get(${feat.index})`;
-        } else {
-          script = `${obj.nameOnClu}:get()`;
-        }
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-        const result = await clu.client.execute(script) as string | null;
-        process.stdout.write(`  => ${result ?? 'nil'}\n`);
-        break;
-      }
+    const obj = resolveObj(clu, objId);
+    if (!obj) { process.stdout.write(`Unknown object: ${objId}\n`); return; }
 
-      case 'set': {
-        const clu = resolveClu(args[0] ?? '');
-        if (!clu) { process.stdout.write(`Unknown CLU: ${args[0] ?? '(none)'}\n`); return; }
-        const obj = resolveObj(clu, args[1] ?? '');
-        if (!obj) { process.stdout.write(`Unknown object: ${args[1] ?? '(none)'}\n`); return; }
-        const featureName = args[2];
-        const rawValue    = args[3];
-        if (!featureName || rawValue === undefined) {
-          process.stdout.write('Usage: set <clu> <object> <feature> <value>\n'); return;
-        }
+    if (action === 'info' || action === '') {
+      printObjInfo(obj);
+      return;
+    }
+
+    if (action === 'get') {
+      const featureName = actionArgs[0];
+      let script: string;
+      if (featureName) {
         const feat = obj.features.find(f => f.name.toLowerCase() === featureName.toLowerCase());
         if (!feat) {
-          const avail = obj.features.filter(f => f.set).map(f => f.name).join(', ');
-          process.stdout.write(`Unknown feature: ${featureName}. Settable: ${avail || '(none)'}\n`);
+          const avail = obj.features.filter(f => f.get).map(f => f.name).join(', ');
+          process.stdout.write(`Unknown feature: ${featureName}. Readable: ${avail || '(none)'}\n`);
           return;
         }
-        if (!feat.set) { process.stdout.write(`Feature ${feat.name} is read-only.\n`); return; }
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-        const result = await clu.client.execute(`${obj.nameOnClu}:set(${feat.index}, ${rawValue})`) as string | null;
-        process.stdout.write(`  => ${result ?? 'nil'}\n`);
-        break;
+        if (!feat.get) { process.stdout.write(`Feature ${feat.name} is write-only.\n`); return; }
+        script = `${obj.nameOnClu}:get(${feat.index})`;
+      } else {
+        script = `${obj.nameOnClu}:get()`;
       }
-
-      case 'call': {
-        const clu = resolveClu(args[0] ?? '');
-        if (!clu) { process.stdout.write(`Unknown CLU: ${args[0] ?? '(none)'}\n`); return; }
-        const obj = resolveObj(clu, args[1] ?? '');
-        if (!obj) { process.stdout.write(`Unknown object: ${args[1] ?? '(none)'}\n`); return; }
-        const methodName = args[2];
-        if (!methodName) { process.stdout.write('Usage: call <clu> <object> <method> [args…]\n'); return; }
-        const meth = obj.methods.find(m => m.name.toLowerCase() === methodName.toLowerCase());
-        if (!meth) {
-          const avail = obj.methods.map(m => m.name).join(', ');
-          process.stdout.write(`Unknown method: ${methodName}. Available: ${avail || '(none)'}\n`);
-          return;
-        }
-        const params = args.slice(3).join(', ');
-        const script = params
-          ? `${obj.nameOnClu}:execute(${meth.index}, ${params})`
-          : `${obj.nameOnClu}:execute(${meth.index})`;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-        const result = await clu.client.execute(script) as string | null;
-        process.stdout.write(`  => ${result ?? 'nil'}\n`);
-        break;
-      }
-
-      case 'exec': {
-        const cluId = args[0];
-        if (!cluId) { process.stdout.write('Usage: exec <clu> <script>\n'); return; }
-        const clu = resolveClu(cluId);
-        if (!clu) { process.stdout.write(`Unknown CLU: ${cluId}\n`); return; }
-        const afterCmd = rawLine.slice(rawLine.toLowerCase().indexOf('exec') + 4).trimStart();
-        const afterClu = afterCmd.slice(afterCmd.toLowerCase().indexOf(cluId.toLowerCase()) + cluId.length).trimStart();
-        if (!afterClu) { process.stdout.write('Usage: exec <clu> <script>\n'); return; }
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-        const result = await clu.client.execute(afterClu) as string | null;
-        process.stdout.write(`  => ${result ?? 'nil'}\n`);
-        break;
-      }
-
-      case 'help':
-        printHelp();
-        break;
-
-      case '':
-        break;
-
-      default:
-        process.stdout.write(`Unknown command: ${cmd}. Type 'help' for usage.\n`);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      const result = await clu.client.execute(script) as string | null;
+      process.stdout.write(`  => ${result ?? 'nil'}\n`);
+      return;
     }
+
+    if (action === 'set') {
+      const [featureName, ...valueArgs] = actionArgs;
+      const rawValue = valueArgs.join(', ');
+      if (!featureName || !rawValue) {
+        process.stdout.write(`Usage: ${obj.friendlyName}.set(feature, value)\n`); return;
+      }
+      const feat = obj.features.find(f => f.name.toLowerCase() === featureName.toLowerCase());
+      if (!feat) {
+        const avail = obj.features.filter(f => f.set).map(f => f.name).join(', ');
+        process.stdout.write(`Unknown feature: ${featureName}. Settable: ${avail || '(none)'}\n`);
+        return;
+      }
+      if (!feat.set) { process.stdout.write(`Feature ${feat.name} is read-only.\n`); return; }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      const result = await clu.client.execute(`${obj.nameOnClu}:set(${feat.index}, ${rawValue})`) as string | null;
+      process.stdout.write(`  => ${result ?? 'nil'}\n`);
+      return;
+    }
+
+    // Try as method name
+    const meth = obj.methods.find(m => m.name.toLowerCase() === action.toLowerCase());
+    if (meth) {
+      const params = actionArgs.join(', ');
+      const script = params
+        ? `${obj.nameOnClu}:execute(${meth.index}, ${params})`
+        : `${obj.nameOnClu}:execute(${meth.index})`;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      const result = await clu.client.execute(script) as string | null;
+      process.stdout.write(`  => ${result ?? 'nil'}\n`);
+      return;
+    }
+
+    const availMethods = obj.methods.map(m => m.name).join(', ');
+    process.stdout.write(`Unknown action: ${action}. Methods: ${availMethods || '(none)'}\n`);
+  }
+
+  async function dispatch(rawLine: string): Promise<void> {
+    const trimmed = rawLine.trim();
+    if (!trimmed) return;
+
+    // Plain commands
+    const spaceIdx = trimmed.indexOf(' ');
+    const firstWord = (spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx)).toLowerCase();
+
+    if (firstWord === 'list' || firstWord === 'ls') {
+      if (cluByName.size === 0) { process.stdout.write('No CLUs found in OMP.\n'); return; }
+      for (const c of cluByName.values()) {
+        process.stdout.write(
+          `  ${c.name.padEnd(16)}  ip=${c.ipAddress.padEnd(15)}  serial=${c.serial}  objects=${c.objects.size}\n`,
+        );
+      }
+      return;
+    }
+
+    if (firstWord === 'exec') {
+      const rest  = trimmed.slice(spaceIdx + 1).trimStart();
+      const sp2   = rest.indexOf(' ');
+      const cluId = sp2 === -1 ? rest : rest.slice(0, sp2);
+      const clu   = resolveClu(cluId);
+      if (!clu) { process.stdout.write(`Unknown CLU: ${cluId || '(none)'}\n`); return; }
+      const script = sp2 === -1 ? '' : rest.slice(sp2 + 1).trimStart();
+      if (!script) { process.stdout.write('Usage: exec <clu> <script>\n'); return; }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      const result = await clu.client.execute(script) as string | null;
+      process.stdout.write(`  => ${result ?? 'nil'}\n`);
+      return;
+    }
+
+    if (firstWord === 'help') { printHelp(); return; }
+
+    // Dot-notation: PART1.PART2[.PART3[...]]
+    const dotIdx = trimmed.indexOf('.');
+    if (dotIdx !== -1) {
+      const first = trimmed.slice(0, dotIdx);
+      const rest  = trimmed.slice(dotIdx + 1);
+
+      // Try first segment as CLU name
+      const cluByFirst = resolveClu(first);
+      if (cluByFirst) {
+        // CLU.objects  or  CLU.OBJECT[.action(args)]
+        if (rest.toLowerCase() === 'objects') {
+          await dispatchDotExpr(cluByFirst, '', 'objects', []);
+          return;
+        }
+        const dot2 = rest.indexOf('.');
+        if (dot2 === -1) {
+          // CLU.OBJECT — show info
+          await dispatchDotExpr(cluByFirst, rest, 'info', []);
+        } else {
+          const objId      = rest.slice(0, dot2);
+          const actionExpr = rest.slice(dot2 + 1);
+          const { name: action, args } = parseCallExpr(actionExpr);
+          await dispatchDotExpr(cluByFirst, objId, action, args);
+        }
+        return;
+      }
+
+      // Single-CLU shorthand: OBJECT.action(args)
+      if (cluByName.size === 1) {
+        const onlyClu = [...cluByName.values()][0];
+        const { name: action, args } = parseCallExpr(rest);
+        await dispatchDotExpr(onlyClu, first, action, args);
+        return;
+      }
+
+      // Multi-CLU but first part not a CLU → check if it's an object shorthand with CLU prefix hint
+      process.stdout.write(`Unknown CLU: ${first}. Available: ${cluNames.join(', ')}\n`);
+      return;
+    }
+
+    // Single-CLU object shorthand: bare OBJECT name → info
+    if (cluByName.size === 1) {
+      const onlyClu = [...cluByName.values()][0];
+      const obj = resolveObj(onlyClu, trimmed);
+      if (obj) { printObjInfo(obj); return; }
+    }
+
+    process.stdout.write(`Unknown command: ${trimmed}. Type 'help' for usage.\n`);
   }
 
   // ─── Readline + autocomplete ───────────────────────────────────────────────
 
-  const COMMANDS = ['list', 'ls', 'objects', 'info', 'get', 'set', 'call', 'exec', 'help', 'exit', 'quit'];
-  const CLU_CMDS   = new Set(['objects', 'info', 'get', 'set', 'call', 'exec']);
-  const OBJ_CMDS   = new Set(['info', 'get', 'set', 'call']);
-  const FEAT_CMDS  = new Set(['get', 'set']);
-  const METH_CMDS  = new Set(['call']);
+  const PLAIN_CMDS = ['list', 'ls', 'exec', 'help', 'exit', 'quit'];
 
   function completer(line: string): [string[], string] {
-    const parts = line.split(/\s+/);
+    const dotIdx = line.lastIndexOf('.');
 
-    if (parts.length <= 1) {
-      const prefix = parts[0] ?? '';
-      const hits = COMMANDS.filter(c => c.startsWith(prefix));
-      return [hits.length ? hits : COMMANDS, prefix];
-    }
+    if (dotIdx !== -1) {
+      const prefix  = line.slice(0, dotIdx);
+      const current = line.slice(dotIdx + 1);
+      const segments = prefix.split('.');
 
-    const cmd     = parts[0].toLowerCase();
-    const argIdx  = parts.length - 1;
-    const current = parts[argIdx] ?? '';
-
-    // arg[1]: CLU name
-    if (argIdx === 1 && CLU_CMDS.has(cmd)) {
-      const hits = cluNames.filter(n => n.toLowerCase().startsWith(current.toLowerCase()));
-      return [hits.length ? hits : cluNames, current];
-    }
-
-    // arg[2]: object friendly name
-    if (argIdx === 2 && OBJ_CMDS.has(cmd)) {
-      const clu = resolveClu(parts[1]);
-      if (clu) {
-        const names = [...clu.objects.values()].map(o => o.friendlyName);
-        const hits = names.filter(n => n.toLowerCase().startsWith(current.toLowerCase()));
-        return [hits.length ? hits : names, current];
-      }
-    }
-
-    // arg[3]: feature name (for get/set) or method name (for call)
-    if (argIdx === 3) {
-      const clu = resolveClu(parts[1]);
-      const obj = clu ? resolveObj(clu, parts[2]) : null;
-      if (obj) {
-        if (FEAT_CMDS.has(cmd)) {
-          const names = cmd === 'set'
-            ? obj.features.filter(f => f.set).map(f => f.name)
-            : obj.features.filter(f => f.get).map(f => f.name);
-          const hits = names.filter(n => n.toLowerCase().startsWith(current.toLowerCase()));
-          return [hits.length ? hits : names, current];
+      if (segments.length === 1) {
+        // Could be CLU.? or OBJECT.? (single CLU)
+        const cluByFirst = resolveClu(segments[0]);
+        if (cluByFirst) {
+          const objNames = [...cluByFirst.objects.values()].map(o => o.friendlyName);
+          const suggestions = ['objects', ...objNames];
+          const hits = suggestions.filter(n => n.toLowerCase().startsWith(current.toLowerCase()));
+          const full = (hits.length ? hits : suggestions).map(n => prefix + '.' + n);
+          return [full, line];
         }
-        if (METH_CMDS.has(cmd)) {
-          const names = obj.methods.map(m => m.name);
-          const hits = names.filter(n => n.toLowerCase().startsWith(current.toLowerCase()));
-          return [hits.length ? hits : names, current];
+        if (cluByName.size === 1) {
+          const onlyClu = [...cluByName.values()][0];
+          const obj = resolveObj(onlyClu, segments[0]);
+          if (obj) {
+            const actions = ['get(', 'set(', 'info', ...obj.methods.map(m => m.name + '(')];
+            const hits = actions.filter(a => a.toLowerCase().startsWith(current.toLowerCase()));
+            const full = (hits.length ? hits : actions).map(a => prefix + '.' + a);
+            return [full, line];
+          }
         }
       }
+
+      if (segments.length === 2) {
+        // CLU.OBJECT.? — suggest actions
+        const clu = resolveClu(segments[0]);
+        if (clu) {
+          const obj = resolveObj(clu, segments[1]);
+          if (obj) {
+            const actions = ['get(', 'set(', 'info', ...obj.methods.map(m => m.name + '(')];
+            const hits = actions.filter(a => a.toLowerCase().startsWith(current.toLowerCase()));
+            const full = (hits.length ? hits : actions).map(a => prefix + '.' + a);
+            return [full, line];
+          }
+        }
+      }
+
+      return [[], line];
     }
 
-    return [[], current];
+    // No dot — suggest plain commands + CLU names (as CLU.) + object names (single CLU)
+    const current = line;
+    const cluSuggestions = cluNames.map(n => n + '.');
+    const singleCluObjs  = cluByName.size === 1
+      ? [...[...cluByName.values()][0].objects.values()].map(o => o.friendlyName + '.')
+      : [];
+    const all  = [...PLAIN_CMDS, ...cluSuggestions, ...singleCluObjs];
+    const hits = all.filter(s => s.toLowerCase().startsWith(current.toLowerCase()));
+    return [hits.length ? hits : all, current];
   }
 
   printHelp();
@@ -491,14 +550,13 @@ export async function runCluRepl(options: CluReplOptions): Promise<void> {
   function prompt() {
     rl.question('clu> ', async (line) => {
       const trimmed = line.trim();
-      const parts   = trimmed.split(/\s+/);
-      const cmd     = parts[0]?.toLowerCase() ?? '';
+      const cmd = trimmed.split(/\s+/)[0]?.toLowerCase() ?? '';
       if (cmd === 'exit' || cmd === 'quit') {
         rl.close();
         return;
       }
       try {
-        await dispatch(cmd, parts.slice(1), trimmed);
+        await dispatch(trimmed);
       } catch (err) {
         process.stdout.write(`error: ${(err as Error).message}\n`);
       }

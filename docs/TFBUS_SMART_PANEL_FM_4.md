@@ -59,6 +59,7 @@ Sub-record layout: `[type(1)] [len(1)] [meta(1)] [data(len)]`
 | 0x06 | 1   | 0x01 | Baseline status byte — always present; data=0x00 when idle |
 | 0x02 | 2   | 0x10 | Temperature — LE int16, units 0.01 °C (panel surface, ~1–2 °C above ambient due to self-heating) |
 | 0x07 | 2   | 0x10 | Light sensor — LE int16 raw ADC (CLU maps to 0–100 %) |
+| 0x08 | 2   | 0x10 | Button event — edge, one cycle only; VAL = btn_idx×7 + event_id |
 
 ### Baseline Frame (1 record, always present)
 
@@ -346,3 +347,229 @@ See also: [SMARTPANEL_FW_FORMAT.md](SMARTPANEL_FW_FORMAT.md) — firmware update
 ## Multi-CLU Note
 
 Secondary CLU (TCP-notified) receives button event type=0x07 only — all buttons appear identical (no identity). Button identity (event type=0x08) is only available to the primary CLU owning the RS485 bus.
+
+---
+
+## CLU Lua API — Full Reference
+
+Source of truth: `docs/device-interfaces/module_SMART_PANEL_FM_4_fv07_03.xml`
+
+### PANEL_BUTTON (class=30, ×16)
+
+**Features:**
+
+| Index | Name | R/W | Type | Range / Default | Unit | Description |
+|-------|------|-----|------|-----------------|------|-------------|
+| 1 | Mode | RW | num | 0=Monostable 1=Bistable 2=Locked |  | Returns the selected mode of button action: 0 – monostable, 1 – bistable, 2 – locked |
+| 2 | HoldDelay | RW | num | 100-5000, def=1000 | ms | Time in milliseconds after which, when pressing and holding a button, the OnHold event oc… |
+| 3 | HoldInterval | RW | num | 100-2000, def=100 | ms | Cyclical interval in milliseconds after which, when pressing and holding a button, the On… |
+| 0 | Value | R | num |  | bool | Returns input state as 0 or 1 |
+| 4 | Label | RW | str | 0-15, def= | string | The text that describes the button |
+| 5 | IconA | RW | str | 0-9, def= | string | The file name of the icon assigned to the button in monostable and bistable mode in the O… |
+| 6 | IconB | RW | str | 0-9, def= | string | The file name of the icon assigned to the button in bistable mode in the ON position. The… |
+
+**Methods:**
+
+| Call | Index | Name | Params | Description |
+|------|-------|------|--------|-------------|
+| set | 1 | SetMode | Mode | Sets mode of button action (0 - monostable, 1 - bistable, 2 - locked) |
+| set | 2 | SetHoldDelay | HoldDelay | Sets HoldDelay value |
+| set | 3 | SetHoldInterval | HoldInterval | Sets HoldInterval value |
+| execute | 3 | SetLabel | Text(0-15) | Sets Label value |
+| execute | 4 | SetIconA | Filename[.bmp](0-9) | Sets IconA BMP Filename |
+| execute | 5 | SetIconB | Filename[.bmp](0-9) | Sets IconB BMP Filename |
+| execute | 0 | ShowOK |  | Causes the green diode on the button to flash for 2 seconds (frequency 500 ms). The red d… |
+| execute | 0 | ShowError |  | Causes the red diode on the button to flash for 2 seconds (frequency 500 ms). The green d… |
+| execute | 1 | LedSwitchOn |  | Activates the green diode on the button |
+| execute | 2 | RedLedSwitchOn |  | Activates the red diode on the button |
+| execute | 2 | LedSwitchOff |  | Deactivates all the diodes on the button |
+
+**Events:**
+
+| Address | Name | Description |
+|---------|------|-------------|
+| 0 | OnValueChange | Event occurs when a change in the input state takes place (regardless of the value) |
+| 1 | OnSwitchOn | Event occurs when the high state is set at input |
+| 2 | OnSwitchOff | Event occurs when the low state is set at input |
+| 3 | OnShortPress | Event occurs after pressing the button for 500ms - 2000 ms |
+| 4 | OnLongPress | Event occurs after pressing the button for longer then 2000 ms |
+| 5 | OnHold | Event occurs for the first time after HoldDelay time passes and then cyclically every Hol… |
+| 6 | OnClick | Event occurs after pressing the button for less than 500 ms |
+
+### PANEL (class=29, ×1)
+
+**Features:**
+
+| Index | Name | R/W | Type | Range / Default | Unit | Description |
+|-------|------|-----|------|-----------------|------|-------------|
+| 4 | GestureIconUp | RW | str | 0-9, def=up | .bmp | The BMP file name of the icon for gesture Up (without extension) |
+| 5 | GestureIconDown | RW | str | 0-9, def=down | .bmp | The BMP file name of the icon for gesture Down (without extension) |
+| 6 | GestureIconLeft | RW | str | 0-9, def=left | .bmp | The BMP file name of the icon for gesture Left (without extension) |
+| 7 | GestureIconRight | RW | str | 0-9, def=right | .bmp | The BMP file name of the icon for gesture Right (without extension) |
+| 10 | ProximitySens | RW | num | 2-100, def=5 |  | Sensitivity of the proximity sensor (less value-more sensitivity) |
+| 11 | ProximityTimeout | RW | num | 1000-60000, def=5000 | ms | The time after which the display will be blanked |
+| 12 | ProximityValue | R | num | - | - | Proximity sensor value (dimensionless value) |
+| 13 | BuzzerValue | RW | num | 0=Off 1=On |  | Sound indication control: 0 - Off 1 - On |
+| 15 | GestureMode | RW | num | 0=Off 1=Vertical 2=Horizontal 3=Vert+Horiz |  | Selection of gestures orientation: 0 - Off 1 - Vertical 2 - Horizontal 3 - Vert+Horiz |
+| 16 | GestureSens | RW | num | 1=Low 2=Mid 3=High |  | Selection of gestures sensitivity: 1 - Low 2 - Mid 3 - High |
+| 17 | PageNr | RW | num | def=1 |  | Number of the current page displayed |
+| 18 | PageDisplayMode | RW | num | 0=ShowImmediately 1=ShowIconOrName 2=ShowGesture |  | Notification before changing the page: 0 - ShowImmediately 1 - ShowIconOrName 2 - ShowGes… |
+| 19 | ButtonsLEDMode | RW | num | 0=LocationLedOFF 1=LocationLedON 2=LocationLedONforActive |  | Buttons location using very low LED light: 0 - LocationLedOFF 1 - LocationLedON 2 - Locat… |
+| 20 | PageControlMode | RW | num | 0=Command 1=Gesture/Command |  | The source that switches the pages: 0 - Command (switching using methods SetNextPage and … |
+| 21 | GestureDisplayMode | RW | num | 0=Off 1=On |  | Display information about the currently performed gesture: 0 - Off 1 - On |
+
+**Methods:**
+
+| Call | Index | Name | Params | Description |
+|------|-------|------|--------|-------------|
+| execute | 0 | SwitchOnDisplay |  | Wakes the display from sleep mode |
+| execute | 1 | ShowButtons |  | Changes display mode into 'buttons'. Clears the display and shows the icons (or text) for… |
+| execute | 2 | ClearScreen |  | Clears the display in 'freedraw' mode |
+| execute | 3 | PrintText | x(0-127), y(0-63), txt(0-15), font size(1-3) | Displays the text in 'freedraw' mode using parameters: x, y, txt, font size, where: - x a… |
+| execute | 20 | PrintFloat | x(0-127), y(0-63), number(8), precision(0-2), font size(1-3) | Displays the float number in 'freedraw' mode using parameters: x, y, number, precision, f… |
+| execute | 4 | DrawLine | x(0-127), y(0-63), xe(0-127), ye(0-63), color(0-1) | Draws the line in 'freedraw' mode using the parameters: x, y, xe, ye, colour, where: - x … |
+| execute | 30 | DrawBox | x(0-127), y(0-63), w(1-127), h(1-63), color(0-1) | Draws the filled rectangle in 'freedraw' mode using the parameters: x, y, w, h, colour, w… |
+| execute | 5 | DrawPoint | x(0-127), y(0-63), color(0-1) | Draws the point in 'freedraw' mode using the parameters: x, y, colour, where: - x and y a… |
+| execute | 6 | DrawIcon | x(0-127), y(0-63), Filename[.bmp](0-9) | Draws the icon (bmp) in 'freedraw' mode using the parameters: x, y, Filename, where: - x … |
+| execute | 7 | DisplayContent |  | Displays the memory graphic buffer content. Changes display mode to 'freedraw' |
+| set | 4 | SetGestureIconUp | Filename[.bmp](0-9) | Sets the icon for gesture Up |
+| set | 5 | SetGestureIconDown | Filename[.bmp](0-9) | Sets the icon for gesture Down |
+| set | 6 | SetGestureIconLeft | Filename[.bmp](0-9) | Sets the icon for gesture Left |
+| set | 7 | SetGestureIconRight | Filename[.bmp](0-9) | Sets the icon for gesture Right |
+| set | 10 | SetProximitySens | ProximitySens(2-100) | Sets the ProximitySens value |
+| set | 11 | SetProximityTimeout | ProximityTimeout(1000-60000) | Sets the time value (in seconds) after which the screen saver will activate |
+| set | 13 | SetBuzzerValue | BuzzerValue(0-1) | Sound control (On/Off) |
+| set | 15 | SetGestureMode | GestureMode(0-3) | Selection of gestures orientation |
+| set | 16 | SetGestureSens | GestureSens(1-3) | Selection of gestures' sensitivity |
+| execute | 21 | SetBeep | Frequency(30-5700), Duration(1-2000), Volume(0-16), Reserved(0-0) | Generates sound according to frequency [Hz], duration [ms] and volume |
+| execute | 22 | SetPageNr | Nr(1-4) | Sets the number of the page to be displayed |
+| set | 18 | SetPageDisplayMode | PageDisplayMode | Sets the mode of display notification before changing the page |
+| set | 19 | SetButtonsLEDMode | ButtonsLEDMode | Sets the buttons location mode using very low LED light |
+| set | 20 | SetPageControlMode | PageControlMode | Sets the source that switches the pages (commands / gestures) |
+| set | 21 | SetGestureDisplayMode | GestureDisplayMode | Sets the mode of display information about the currently performed gesture |
+| execute | 27 | SetNextPage |  | Force next page to be displayed |
+| execute | 28 | SetPrevPage |  | Force previous page to be displayed |
+| execute | 29 | Draw |  | Performs OnDraw event when OLED is active |
+| execute | 31 | StartCleaningMode | Duration(10-255 s) | Disabling button functions, gestures, and screen refresh during panel cleaning (blocking … |
+
+**Events:**
+
+| Address | Name | Description |
+|---------|------|-------------|
+| 0 | OnGestureUp | Event occurs after gesture Up |
+| 1 | OnGestureDown | Event occurs after gesture Down |
+| 2 | OnGestureLeft | Event occurs after gesture Left |
+| 3 | OnGestureRight | Event occurs after gesture Right |
+| 4 | OnProximityDetect | Event occurs after detection an object in front of the Smart Panel |
+| 5 | OnPageChange | Event occurs after page change |
+| 6 | OnDisplayOn | Event occurs after display on |
+| 7 | OnDisplayOff | Event occurs after display off |
+
+### PANELSENSTEMP (class=20, ×1)
+
+**Features:**
+
+| Index | Name | R/W | Type | Range / Default | Unit | Description |
+|-------|------|-----|------|-----------------|------|-------------|
+| 1 | Threshold | RW | num | 0-1, def=0.1 | number | Hysteresis size (accuracy 0.1°C) specifying the sensitivity when the following events are… |
+| 2 | Sensitivity | RW | num | 0-5000, def=1000 | ms | Period (in ms) for which the sampled values are averaged |
+| 6 | Calibration | RW | num | def=0 | °C | Temperature calibration factor within -10°C to +10°C |
+| 3 | MinValue | RW | num | 0-45, def=0 | °C | Minimum value of the Value characteristic after exceeding which the OnOutOfRange event is… |
+| 4 | MaxValue | RW | num | 0-45, def=45 | °C | Maximum value of the Value characteristic after exceeding which the OnOutOfRange event is… |
+| 9 | StatisticState | RW | num | 0=Off 1=On | number | Enables measurement reporting to the statistics module |
+| 0 | Value | R | num | 0-45 | °C | Input value: for temperature sensor from 0.0 to 45.0 (°C) |
+
+**Methods:**
+
+_None._
+
+**Events:**
+
+| Address | Name | Description |
+|---------|------|-------------|
+| 0 | OnValueChange | Event resulting from changing input state |
+| 1 | OnValueRise | Event resulting from exceeding the upper threshold of hysteresis |
+| 2 | OnValueLower | Event resulting from exceeding the lower threshold of hysteresis |
+| 3 | OnOutOfRange | Event resulting from exceeding the specified range (MinValue - MaxValue) |
+
+### PANELSENSLIGHT (class=21, ×1)
+
+**Features:**
+
+| Index | Name | R/W | Type | Range / Default | Unit | Description |
+|-------|------|-----|------|-----------------|------|-------------|
+| 1 | Threshold | RW | num | 0-100, def=0.5 | number | Hysteresis size (accuracy 0.1%) specifying the sensitivity when the following events are … |
+| 2 | Sensitivity | RW | num | 0-5000, def=500 | ms | Period (in ms) for which the sampled values are averaged |
+| 3 | MinValue | RW | num | 0-100, def=0 | % | Minimum value of the Value characteristic after exceeding which the OnOutOfRange event is… |
+| 4 | MaxValue | RW | num | 0-100, def=100 | % | Maximum value of the Value characteristic after exceeding which the OnOutOfRange event is… |
+| 0 | Value | R | num | 0-100 | % | Input value: for light sensor from 0 to 100 % |
+
+**Methods:**
+
+_None._
+
+**Events:**
+
+| Address | Name | Description |
+|---------|------|-------------|
+| 0 | OnValueChange | Event resulting from changing input state |
+| 1 | OnValueRise | Event resulting from exceeding the upper threshold of hysteresis |
+| 2 | OnValueLower | Event resulting from exceeding the lower threshold of hysteresis |
+| 3 | OnOutOfRange | Event resulting from exceeding the specified range (MinValue - MaxValue) |
+
+### PANEL_PAGE (class=19, ×4)
+
+**Features:**
+
+| Index | Name | R/W | Type | Range / Default | Unit | Description |
+|-------|------|-----|------|-----------------|------|-------------|
+| 0 | PageType | RW | num | 0=Inactive 1=Buttons 2=Thermostats 3=FreeDraw |  | The type of page displayed on the Smart Panel: 0 - Inactive 1 - Buttons 2 - Thermostats 3… |
+| 1 | PageName | RW | str | 0-15, def= | - | Page Name/Icon Name of page displayed on the Smart Panel. Enabled when the PageDisplayMod… |
+| 3 | Object_1_Id | RW | str | 0-23, def= | - | ID of the thermostat object (e.g.\: on the local CLU\: THE1325, on the remote CLU\: CLU22… |
+| 4 | Object_1_Name | RW | str | 0-15, def= | - | Name of the thermostat displayed on the Smart Panel page (no name - thermostat inactive).… |
+| 15 | Object_1_CustomIcon | RW | str | 0-9, def= |  | Sets the custom icon name of the thermostat managed by the Smart Panel pages. An empty pr… |
+| 11 | DistributedLogicGroup_1 | RW | num | 0-10000, def=0 |  | Distributed Logic group - broadcast group for distributed logic |
+| 5 | Object_2_Id | RW | str | 0-23, def= | - | ID of the thermostat object (e.g.\: on the local CLU\: THE1325, on the remote CLU\: CLU22… |
+| 6 | Object_2_Name | RW | str | 0-15, def= | - | Name of the thermostat displayed on the Smart Panel page (no name - thermostat inactive).… |
+| 16 | Object_2_CustomIcon | RW | str | 0-9, def= |  | Sets the custom icon name of the thermostat managed by the Smart Panel pages. An empty pr… |
+| 12 | DistributedLogicGroup_2 | RW | num | 0-10000, def=0 |  | Distributed Logic group - broadcast group for distributed logic |
+| 7 | Object_3_Id | RW | str | 0-23, def= | - | ID of the thermostat object (e.g.\: on the local CLU\: THE1325, on the remote CLU\: CLU22… |
+| 8 | Object_3_Name | RW | str | 0-15, def= | - | Name of the thermostat displayed on the Smart Panel page (no name - thermostat inactive).… |
+| 17 | Object_3_CustomIcon | RW | str | 0-9, def= |  | Sets the custom icon name of the thermostat managed by the Smart Panel pages. An empty pr… |
+| 13 | DistributedLogicGroup_3 | RW | num | 0-10000, def=0 |  | Distributed Logic group - broadcast group for distributed logic |
+| 9 | Object_4_Id | RW | str | 0-23, def= | - | ID of the thermostat object (e.g.\: on the local CLU\: THE1325, on the remote CLU\: CLU22… |
+| 10 | Object_4_Name | RW | str | 0-15, def= | - | Name of the thermostat displayed on the Smart Panel page (no name - thermostat inactive).… |
+| 18 | Object_4_CustomIcon | RW | str | 0-9, def= |  | Sets the custom icon name of the thermostat managed by the Smart Panel pages. An empty pr… |
+| 14 | DistributedLogicGroup_4 | RW | num | 0-10000, def=0 |  | Distributed Logic group - broadcast group for distributed logic |
+
+**Methods:**
+
+| Call | Index | Name | Params | Description |
+|------|-------|------|--------|-------------|
+| set | 0 | SetPageType | PageType | The type of page displayed on the Smart Panel |
+| set | 1 | SetPageName | PageName | Sets the page name/icon name of page displayed on the Smart Panel. Enabled when the PageD… |
+| set | 3 | SetObject_1_Id | Object_1_Id(0-23) | Sets the ID of the thermostat object (e.g.: on the local CLU: THE1325, on the remote CLU:… |
+| set | 4 | SetObject_1_Name | Object_1_Name(0-15) | Sets the name of the thermostat displayed on the Smart Panel page (no name - thermostat i… |
+| set | 15 | SetObject_1_CustomIcon | Object_1_CustomIcon(0-9) | Sets the custom icon name of the thermostat managed by the Smart Panel pages. Calling the… |
+| set | 5 | SetObject_2_Id | Object_2_Id(0-23) | Sets the ID of the thermostat object (e.g.: on the local CLU: THE1325, on the remote CLU:… |
+| set | 6 | SetObject_2_Name | Object_2_Name(0-15) | Sets the name of the thermostat displayed on the Smart Panel page (no name - thermostat i… |
+| set | 16 | SetObject_2_CustomIcon | Object_2_CustomIcon(0-9) | Sets the custom icon name of the thermostat managed by the Smart Panel pages. Calling the… |
+| set | 7 | SetObject_3_Id | Object_3_Id(0-23) | Sets the ID of the thermostat object (e.g.: on the local CLU: THE1325, on the remote CLU:… |
+| set | 8 | SetObject_3_Name | Object_3_Name(0-15) | Sets the name of the thermostat displayed on the Smart Panel page (no name - thermostat i… |
+| set | 17 | SetObject_3_CustomIcon | Object_3_CustomIcon(0-9) | Sets the custom icon name of the thermostat managed by the Smart Panel pages. Calling the… |
+| set | 9 | SetObject_4_Id | Object_4_Id(0-23) | Sets the ID of the thermostat object (e.g.: on the local CLU: THE1325, on the remote CLU:… |
+| set | 10 | SetObject_4_Name | Object_4_Name(0-15) | Sets the name of the thermostat displayed on the Smart Panel page (no name - thermostat i… |
+| set | 18 | SetObject_4_CustomIcon | Object_4_CustomIcon(0-9) | Sets the custom icon name of the thermostat managed by the Smart Panel pages. Calling the… |
+
+**Events:**
+
+| Address | Name | Description |
+|---------|------|-------------|
+| 0 | OnPageOpen | Event occurs after new page is shown |
+| 1 | OnPageClose | Event occurs after actual page is closed |
+| 2 | OnDraw | Event occurs after freedraw page wants to be redrawn |
+| 4 | OnTherm1ModeButtonClick | Event occurs after top-left 'mode' button click in the thermostat no. 1 |
+| 5 | OnTherm2ModeButtonClick | Event occurs after top-left 'mode' button click in the thermostat no. 2 |
+| 6 | OnTherm3ModeButtonClick | Event occurs after top-left 'mode' button click in the thermostat no. 3 |
+| 7 | OnTherm4ModeButtonClick | Event occurs after top-left 'mode' button click in the thermostat no. 4 |
+

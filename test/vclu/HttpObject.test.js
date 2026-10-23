@@ -8,7 +8,7 @@ import {
   parseBody,
   urlDecodeQuery,
   urlEncodeObject,
-} from '../../src/vclu/HttpObject.js';
+} from '../../dist/vclu/HttpObject.js';
 
 describe('HTTP_TYPE', () => {
   it('NONE=0, TEXT=1, JSON=2, XML=3, FORM_DATA=4, OTHER=5', () => {

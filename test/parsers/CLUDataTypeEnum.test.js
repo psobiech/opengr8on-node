@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CLUDataTypeEnum, cluDataTypeOf } from '../../src/parsers/interfaces/CLUDataTypeEnum.js';
+import { CLUDataTypeEnum, cluDataTypeOf } from '../../dist/parsers/interfaces/CLUDataTypeEnum.js';
 
 describe('CLUDataTypeEnum', () => {
   it('has expected values', () => {

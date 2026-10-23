@@ -6,7 +6,7 @@ import {
   CLU_FEATURES,
   CLU_METHODS,
   CLU_EVENTS,
-} from '../../src/vclu/VirtualCLU.js';
+} from '../../dist/vclu/VirtualCLU.js';
 
 function makeClu() {
   return new VirtualCLU(null, '/tmp', 'TestCLU');

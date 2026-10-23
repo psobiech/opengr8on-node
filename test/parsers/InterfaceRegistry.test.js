@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { InterfaceRegistry } from '../../src/parsers/interfaces/InterfaceRegistry.js';
+import { InterfaceRegistry } from '../../dist/parsers/interfaces/InterfaceRegistry.js';
 
 const DEVICE_INTERFACES_DIR = new URL('../../../opengr8on/runtime/device-interfaces', import.meta.url).pathname;
 

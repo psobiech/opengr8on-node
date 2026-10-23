@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { HttpRequest, HTTP_REQUEST_FEATURES, HTTP_REQUEST_METHODS, HTTP_REQUEST_EVENTS } from '../../src/vclu/HttpRequest.js';
+import { HttpRequest, HTTP_REQUEST_FEATURES, HTTP_REQUEST_METHODS, HTTP_REQUEST_EVENTS } from '../../dist/vclu/HttpRequest.js';
 
 const F = HTTP_REQUEST_FEATURES;
 const M = HTTP_REQUEST_METHODS;

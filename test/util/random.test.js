@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomBytes, randomInt, randomHexString } from '../../src/util/random.js';
+import { randomBytes, randomInt, randomHexString } from '../../dist/util/random.js';
 
 describe('random', () => {
   describe('randomBytes', () => {

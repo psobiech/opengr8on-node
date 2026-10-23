@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "description": "CLU protocol over UDP - Node.js port of opengr8on lib/common",
   "type": "module",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./dist/index.js"
   },
   "bin": {
     "tfbus-monitor": "./bin/tfbus-monitor.js",

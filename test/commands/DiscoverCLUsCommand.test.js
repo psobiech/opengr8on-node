@@ -1,11 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CipherKey } from '../../src/CipherKey.js';
-import { DiscoverCLUsCommand, hash, getCipherType } from '../../src/commands/DiscoverCLUsCommand.js';
-import { CipherType } from '../../src/device/CipherType.js';
-import { CLUDevice } from '../../src/device/CLUDevice.js';
-import { randomBytes } from '../../src/util/random.js';
-import { RANDOM_ENCRYPTED_BYTES, IV_BYTES, RANDOM_BYTES } from '../../src/constants.js';
+import { CipherKey } from '../../dist/CipherKey.js';
+import { DiscoverCLUsCommand, hash, getCipherType } from '../../dist/commands/DiscoverCLUsCommand.js';
+import { CipherType } from '../../dist/device/CipherType.js';
+import { CLUDevice } from '../../dist/device/CLUDevice.js';
+import { randomBytes } from '../../dist/util/random.js';
+import { RANDOM_ENCRYPTED_BYTES, IV_BYTES, RANDOM_BYTES } from '../../dist/constants.js';
 
 const LOCAL_IP = '192.168.1.50';
 

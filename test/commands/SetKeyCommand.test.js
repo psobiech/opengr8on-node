@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SetKeyCommand } from '../../src/commands/SetKeyCommand.js';
-import { randomBytes } from '../../src/util/random.js';
-import { RANDOM_ENCRYPTED_BYTES, IV_BYTES, KEY_BYTES } from '../../src/constants.js';
+import { SetKeyCommand } from '../../dist/commands/SetKeyCommand.js';
+import { randomBytes } from '../../dist/util/random.js';
+import { RANDOM_ENCRYPTED_BYTES, IV_BYTES, KEY_BYTES } from '../../dist/constants.js';
 
 describe('SetKeyCommand', () => {
   const encrypted = randomBytes(RANDOM_ENCRYPTED_BYTES);

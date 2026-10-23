@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path';
-import { SerialTransport } from '../src/tfbus/transport/SerialTransport.js';
-import { runMonitor } from '../src/tfbus/monitor.js';
+import { SerialTransport } from '../dist/tfbus/transport/SerialTransport.js';
+import { runMonitor } from '../dist/tfbus/monitor.js';
 
 const args = process.argv.slice(2);
 function argValue(flag) { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : null; }

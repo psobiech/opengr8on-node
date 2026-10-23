@@ -6,7 +6,7 @@ import {
   mqttRgbwState,
   parseShutterState,
   MQTT_PRESS_EVENT,
-} from '../../src/vclu/MqttState.js';
+} from '../../dist/vclu/MqttState.js';
 
 describe('mqttStateFrom', () => {
   it('true → ON', () => assert.equal(mqttStateFrom(true), 'ON'));

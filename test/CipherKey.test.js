@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CipherKey } from '../src/CipherKey.js';
+import { CipherKey } from '../dist/CipherKey.js';
 
 describe('CipherKey', () => {
   describe('DEFAULT_BROADCAST', () => {

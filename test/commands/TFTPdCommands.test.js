@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { StartTFTPdCommand } from '../../src/commands/StartTFTPdCommand.js';
-import { StopTFTPdCommand } from '../../src/commands/StopTFTPdCommand.js';
-import { ErrorCommand } from '../../src/commands/ErrorCommand.js';
+import { StartTFTPdCommand } from '../../dist/commands/StartTFTPdCommand.js';
+import { StopTFTPdCommand } from '../../dist/commands/StopTFTPdCommand.js';
+import { ErrorCommand } from '../../dist/commands/ErrorCommand.js';
 
 describe('StartTFTPdCommand', () => {
   it('request toBuffer() is "req_start_ftp"', () => {

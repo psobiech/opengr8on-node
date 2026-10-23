@@ -8,28 +8,16 @@ import { CLU_STATE } from './VirtualCLU.js';
 import { TFTPServer } from './TFTPServer.js';
 import { ProjectRegistry } from './ProjectRegistry.js';
 
-// Re-use existing library pieces
-// @ts-ignore - JS file in project
 import { CipherKey } from '../CipherKey.js';
-// @ts-ignore - JS file in project
-import { DiscoverCLUsCommand } from '../commands/DiscoverCLUsCommand.js';
-// @ts-ignore - JS file in project
+import { DiscoverCLUsCommand, hash as discoverHash } from '../commands/DiscoverCLUsCommand.js';
 import { SetIpCommand } from '../commands/SetIpCommand.js';
-// @ts-ignore - JS file in project
 import { SetKeyCommand } from '../commands/SetKeyCommand.js';
-// @ts-ignore - JS file in project
 import { ResetCommand } from '../commands/ResetCommand.js';
-// @ts-ignore - JS file in project
 import { LuaScriptCommand } from '../commands/LuaScriptCommand.js';
-// @ts-ignore - JS file in project
 import { StartTFTPdCommand } from '../commands/StartTFTPdCommand.js';
-// @ts-ignore - JS file in project
 import { StopTFTPdCommand } from '../commands/StopTFTPdCommand.js';
-// @ts-ignore - JS file in project
-import { GenerateMeasurementsCommand } from '../commands/GenerateMeasurementsCommand.js';
-// @ts-ignore - JS file in project
+import { GenerateMeasurementsCommand, RESPONSE_OK } from '../commands/GenerateMeasurementsCommand.js';
 import { ErrorCommand } from '../commands/ErrorCommand.js';
-// @ts-ignore - JS file in project
 import { COMMAND_PORT } from '../constants.js';
 
 const CLIENT_REGISTER_PREFIX = 'SYSTEM:clientRegister(';
@@ -281,7 +269,7 @@ export class Server {
             const resp = GenerateMeasurementsCommand.response(
               this._opts.localAddress,
               cmd.sessionId,
-              GenerateMeasurementsCommand.RESPONSE_OK,
+              RESPONSE_OK,
             );
             this._sendEncrypted(this._projectCipherKey, resp.toBuffer(), fromAddr, fromPort);
             return;
@@ -294,7 +282,7 @@ export class Server {
             const resp = GenerateMeasurementsCommand.response(
               this._opts.localAddress,
               cmd.sessionId,
-              GenerateMeasurementsCommand.RESPONSE_OK,
+              RESPONSE_OK,
             );
             this._sendEncrypted(this._projectCipherKey, resp.toBuffer(), fromAddr, fromPort);
             return;
@@ -311,7 +299,7 @@ export class Server {
 
   private _onDiscover(cmd: { encrypted: Buffer; iv: Buffer }) {
     const decrypted = this._projectCipherKey.decrypt(cmd.encrypted);
-    const hash = DiscoverCLUsCommand.hash(decrypted ?? nodeRandomBytes(30));
+    const hash = discoverHash(decrypted ?? nodeRandomBytes(30));
     const tempKey = this._generateTemporaryKey();
     const responseEncrypted = tempKey.encrypt(hash);
 

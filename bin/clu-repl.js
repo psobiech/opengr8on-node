@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { runCluRepl } from '../src/clu/repl.js';
+import { runCluRepl } from '../dist/clu/repl.js';
 
 const { values } = parseArgs({
   options: {

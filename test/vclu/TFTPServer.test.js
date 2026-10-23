@@ -4,7 +4,7 @@ import dgram from 'node:dgram';
 import { tmpdir } from 'node:os';
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { TFTPServer, TFTP_DEFAULT_PORT } from '../../src/vclu/TFTPServer.js';
+import { TFTPServer, TFTP_DEFAULT_PORT } from '../../dist/vclu/TFTPServer.js';
 
 // ─── TFTP constants ──────────────────────────────────────────────────────────
 const PKT_RRQ   = 1;

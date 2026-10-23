@@ -12,8 +12,9 @@ import {
   type MqttDiscoveryDevice,
 } from './MqttDiscovery.js';
 
-// @ts-ignore - JS file in project
 import { CLUClient } from '../CLUClient.js';
+import { CLUDevice } from '../device/CLUDevice.js';
+import type { CipherKey } from '../CipherKey.js';
 
 export const REMOTE_CLU_METHODS = {
   EXECUTE: 0,
@@ -67,8 +68,8 @@ export class RemoteCLU extends VirtualObject {
     const cipherKey = vs.getCipherKeyFor(this._remoteAddress);
     if (cipherKey == null) return null;
 
-    const device = { address: this._remoteAddress };
-    this._client = new CLUClient(localAddress, device, cipherKey);
+    const device = new CLUDevice({ address: this._remoteAddress });
+    this._client = new CLUClient(localAddress, device, cipherKey as CipherKey);
     return this._client;
   }
 

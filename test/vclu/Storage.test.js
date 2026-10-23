@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { mkdirSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { Storage, STORAGE_FEATURES, STORAGE_METHODS } from '../../src/vclu/Storage.js';
+import { Storage, STORAGE_FEATURES, STORAGE_METHODS } from '../../dist/vclu/Storage.js';
 
 describe('Storage', () => {
   let tmpRoot;

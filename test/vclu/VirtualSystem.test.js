@@ -2,13 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { VirtualSystem } from '../../src/vclu/VirtualSystem.js';
-import { VirtualCLU, CLU_FEATURES, CLU_STATE } from '../../src/vclu/VirtualCLU.js';
-import { Timer } from '../../src/vclu/Timer.js';
-import { Storage } from '../../src/vclu/Storage.js';
-import { HttpRequest } from '../../src/vclu/HttpRequest.js';
-import { HttpListener } from '../../src/vclu/HttpListener.js';
-import { MqttTopic } from '../../src/vclu/MqttTopic.js';
+import { VirtualSystem } from '../../dist/vclu/VirtualSystem.js';
+import { VirtualCLU, CLU_FEATURES, CLU_STATE } from '../../dist/vclu/VirtualCLU.js';
+import { Timer } from '../../dist/vclu/Timer.js';
+import { Storage } from '../../dist/vclu/Storage.js';
+import { HttpRequest } from '../../dist/vclu/HttpRequest.js';
+import { HttpListener } from '../../dist/vclu/HttpListener.js';
+import { MqttTopic } from '../../dist/vclu/MqttTopic.js';
 
 let httpListenerPort = 18800; // unique port per test to avoid bind conflicts
 

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readProjectCipherKey, readAllObjects } from '../../src/parsers/omp/OmpReader.js';
-import { CipherKey } from '../../src/CipherKey.js';
+import { readProjectCipherKey, readAllObjects } from '../../dist/parsers/omp/OmpReader.js';
+import { CipherKey } from '../../dist/CipherKey.js';
 
 const TEST_OMP = new URL('../../../opengr8on/modules/parsers/src/test/resources/test.omp', import.meta.url).pathname;
 

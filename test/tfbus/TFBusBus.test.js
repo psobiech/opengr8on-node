@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { pollAddress, pollBus, receiveMessage } from '../../src/tfbus/TFBusBus.js';
-import { statusPollFrame } from '../../src/tfbus/TFBusCommands.js';
-import { TLVType } from '../../src/tfbus/StatusPollResponse.js';
+import { pollAddress, pollBus, receiveMessage } from '../../dist/tfbus/TFBusBus.js';
+import { statusPollFrame } from '../../dist/tfbus/TFBusCommands.js';
+import { TLVType } from '../../dist/tfbus/StatusPollResponse.js';
 
 // Build a valid module→CLU RX frame wrapping a TLV payload
 function buildRxFrame(payload) {

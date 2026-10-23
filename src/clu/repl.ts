@@ -152,7 +152,7 @@ export async function runCluRepl(options: CluReplOptions): Promise<void> {
   // name (friendly) = Lua script name; nameOnCLU = CLU internal Lua variable.
 
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-  const allObjects = readAllObjects(ompFile) as Map<unknown, RawObj>;
+  const allObjects = readAllObjects(ompFile) as unknown as Map<unknown, RawObj>;
 
   // ─── Project cipher key ────────────────────────────────────────────────────
 

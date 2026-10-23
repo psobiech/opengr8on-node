@@ -9,7 +9,7 @@ import {
   setRampTimeRecord, dimmerSetValueRecord, featureParamRecord,
   setChannelValueRecord,
   checkAliveFrame, buzzerBeepFrame, printTextFrame, drawFrame,
-} from '../../src/tfbus/TFBusCommands.js';
+} from '../../dist/tfbus/TFBusCommands.js';
 
 describe('universal frames', () => {
   it('resetFrame() broadcast = AA FF 07 52', () => {

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSmartPanelResponse } from '../../src/tfbus/StatusPollResponse.js';
+import { parseSmartPanelResponse } from '../../dist/tfbus/StatusPollResponse.js';
 
 function makePayload({ buttonMask = 0, edgeMask = 0, lightRaw = 0 } = {}) {
   const buf = Buffer.alloc(13, 0);

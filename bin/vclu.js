@@ -19,9 +19,9 @@ import { existsSync, copyFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
-import { readOrGenerateKeys, readOrGenerateDeviceConfig } from '../src/vclu/Config.js';
-import { getLocalIPv4Interfaces, getInterfaceByName, getInterfaceByAddress } from '../src/util/networkInterfaces.js';
-import { Server } from '../src/vclu/Server.js';
+import { readOrGenerateKeys, readOrGenerateDeviceConfig } from '../dist/vclu/Config.js';
+import { getLocalIPv4Interfaces, getInterfaceByName, getInterfaceByAddress } from '../dist/util/networkInterfaces.js';
+import { Server } from '../dist/vclu/Server.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

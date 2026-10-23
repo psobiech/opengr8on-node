@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SetIpCommand } from '../../src/commands/SetIpCommand.js';
+import { SetIpCommand } from '../../dist/commands/SetIpCommand.js';
 
 const SERIAL = 0x00ABCDEF;
 const IP = '192.168.1.100';

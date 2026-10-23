@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {
   parseStatusPoll, parseTemperatureCelsius, parseButtonEvent,
   TLVType, ButtonEvent,
-} from '../../src/tfbus/StatusPollResponse.js';
-import { parseRxFrame } from '../../src/tfbus/TFBusFrame.js';
+} from '../../dist/tfbus/StatusPollResponse.js';
+import { parseRxFrame } from '../../dist/tfbus/TFBusFrame.js';
 
 describe('parseStatusPoll', () => {
   it('empty payload returns empty records array', () => {

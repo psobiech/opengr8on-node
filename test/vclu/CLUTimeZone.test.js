@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CLU_TIMEZONE_IDS, cluTimeZoneId } from '../../src/vclu/CLUTimeZone.js';
+import { CLU_TIMEZONE_IDS, cluTimeZoneId } from '../../dist/vclu/CLUTimeZone.js';
 
 describe('CLUTimeZone', () => {
   it('has 23 entries', () => {

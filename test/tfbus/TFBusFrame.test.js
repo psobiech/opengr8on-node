@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildFrame, parseRxFrame, parseBusTxFrame, BROADCAST } from '../../src/tfbus/TFBusFrame.js';
+import { buildFrame, parseRxFrame, parseBusTxFrame, BROADCAST } from '../../dist/tfbus/TFBusFrame.js';
 
 describe('buildFrame', () => {
   it('RESET broadcast matches wire capture AA FF 07 52', () => {

@@ -12,7 +12,7 @@ import {
   mqttDiscoveryShutter,
   mqttDiscoveryNumberInteger,
   mqttDiscoveryNumberFloat,
-} from '../../src/vclu/MqttDiscovery.js';
+} from '../../dist/vclu/MqttDiscovery.js';
 
 describe('MQTT_AVAILABILITY_TOPIC', () => {
   it('is opengr8on/available', () => {

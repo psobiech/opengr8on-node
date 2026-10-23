@@ -7,7 +7,7 @@ import {
   TIMER_FEATURES,
   TIMER_METHODS,
   TIMER_EVENTS,
-} from '../../src/vclu/Timer.js';
+} from '../../dist/vclu/Timer.js';
 
 function makeTimer() {
   return new Timer(null, 'T');

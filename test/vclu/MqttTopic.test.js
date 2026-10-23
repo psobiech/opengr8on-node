@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { MqttTopic, MQTT_TOPIC_FEATURES, MQTT_TOPIC_METHODS, MQTT_TOPIC_EVENTS } from '../../src/vclu/MqttTopic.js';
+import { MqttTopic, MQTT_TOPIC_FEATURES, MQTT_TOPIC_METHODS, MQTT_TOPIC_EVENTS } from '../../dist/vclu/MqttTopic.js';
 
 function makeMockClient() {
   const client = new EventEmitter();

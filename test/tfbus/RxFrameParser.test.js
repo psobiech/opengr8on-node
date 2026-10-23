@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { RxFrameParser } from '../../src/tfbus/transport/RxFrameParser.js';
-import { buildFrame } from '../../src/tfbus/TFBusFrame.js';
-import { addrAssignFrame, statusPollFrame, checkAliveFrame, moduleCmdFrame, activateRecord } from '../../src/tfbus/TFBusCommands.js';
+import { RxFrameParser } from '../../dist/tfbus/transport/RxFrameParser.js';
+import { buildFrame } from '../../dist/tfbus/TFBusFrame.js';
+import { addrAssignFrame, statusPollFrame, checkAliveFrame, moduleCmdFrame, activateRecord } from '../../dist/tfbus/TFBusCommands.js';
 
 // Build a valid PROVISION frame (type 0xFB, 25 bytes)
 function provisionFrame(dest = 0xFF) {

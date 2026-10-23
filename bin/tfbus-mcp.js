@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { start } from '../src/mcp/tfbus-server.js';
+import { start } from '../dist/mcp/tfbus-server.js';
 
 const { values } = parseArgs({
   options: {

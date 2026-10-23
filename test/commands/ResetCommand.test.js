@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { ResetCommand } from '../../src/commands/ResetCommand.js';
+import { ResetCommand } from '../../dist/commands/ResetCommand.js';
 
 const IP = '192.168.1.99';
 

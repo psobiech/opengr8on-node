@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { transcribeModules } from '../src/parsers/interfaces/transcribeModules.js';
+import { transcribeModules } from '../dist/parsers/interfaces/transcribeModules.js';
 
 const args = process.argv.slice(2);
 

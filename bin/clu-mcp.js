@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { start } from '../src/mcp/clu-server.js';
+import { start } from '../dist/mcp/clu-server.js';
 
 const { values } = parseArgs({
   options: {

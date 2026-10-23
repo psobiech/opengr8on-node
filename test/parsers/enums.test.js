@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CLUClassNameEnum, cluClassNameOf } from '../../src/parsers/interfaces/CLUClassNameEnum.js';
-import { TreeObjectType, treeObjectTypeFrom } from '../../src/parsers/omp/system/TreeObjectType.js';
-import { SpecificObjectClass, specificObjectClassFrom } from '../../src/parsers/omp/system/specificObjects/SpecificObjectClass.js';
-import { SpecificObjectType, specificObjectTypeFrom } from '../../src/parsers/omp/system/specificObjects/SpecificObjectType.js';
+import { CLUClassNameEnum, cluClassNameOf } from '../../dist/parsers/interfaces/CLUClassNameEnum.js';
+import { TreeObjectType, treeObjectTypeFrom } from '../../dist/parsers/omp/system/TreeObjectType.js';
+import { SpecificObjectClass, specificObjectClassFrom } from '../../dist/parsers/omp/system/specificObjects/SpecificObjectClass.js';
+import { SpecificObjectType, specificObjectTypeFrom } from '../../dist/parsers/omp/system/specificObjects/SpecificObjectType.js';
 
 describe('CLUClassNameEnum', () => {
   it('has expected values', () => {

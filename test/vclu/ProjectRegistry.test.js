@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ProjectRegistry } from '../../src/vclu/ProjectRegistry.js';
+import { ProjectRegistry } from '../../dist/vclu/ProjectRegistry.js';
 
 // Minimal system.xml with two CLU devices
 const SYSTEM_XML = `<?xml version="1.0" encoding="UTF-8"?>

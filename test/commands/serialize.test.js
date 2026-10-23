@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { serializeCommand, asString, splitExact, splitAtLeast } from '../../src/commands/serialize.js';
+import { serializeCommand, asString, splitExact, splitAtLeast } from '../../dist/commands/serialize.js';
 
 describe('serialize', () => {
   describe('serializeCommand', () => {

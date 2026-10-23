@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { VirtualObject } from '../../src/vclu/VirtualObject.js';
+import { VirtualObject } from '../../dist/vclu/VirtualObject.js';
 
 describe('VirtualObject', () => {
   describe('name', () => {

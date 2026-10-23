@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CLUDevice } from '../../src/device/CLUDevice.js';
-import { CipherKey } from '../../src/CipherKey.js';
-import { CipherType } from '../../src/device/CipherType.js';
-import { randomBytes } from '../../src/util/random.js';
+import { CLUDevice } from '../../dist/device/CLUDevice.js';
+import { CipherKey } from '../../dist/CipherKey.js';
+import { CipherType } from '../../dist/device/CipherType.js';
+import { randomBytes } from '../../dist/util/random.js';
 
 describe('CipherType', () => {
   it('has expected values', () => {

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { toHexString, hexToBuffer, hexToNumber, hexToBigInt } from '../../src/util/hex.js';
+import { toHexString, hexToBuffer, hexToNumber, hexToBigInt } from '../../dist/util/hex.js';
 
 describe('hex', () => {
   describe('toHexString', () => {

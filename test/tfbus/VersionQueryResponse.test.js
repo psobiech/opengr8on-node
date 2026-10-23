@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseVersionResponse } from '../../src/tfbus/VersionQueryResponse.js';
+import { parseVersionResponse } from '../../dist/tfbus/VersionQueryResponse.js';
 
 describe('parseVersionResponse', () => {
   it('parses 3-byte payload: hwType hwVer fwApiVer, extra=null', () => {

@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { HttpListener, HTTP_LISTENER_FEATURES, HTTP_LISTENER_METHODS, HTTP_LISTENER_EVENTS } from '../../src/vclu/HttpListener.js';
-import { HTTP_TYPE } from '../../src/vclu/HttpObject.js';
+import { HttpListener, HTTP_LISTENER_FEATURES, HTTP_LISTENER_METHODS, HTTP_LISTENER_EVENTS } from '../../dist/vclu/HttpListener.js';
+import { HTTP_TYPE } from '../../dist/vclu/HttpObject.js';
 
 const F = HTTP_LISTENER_FEATURES;
 const M = HTTP_LISTENER_METHODS;

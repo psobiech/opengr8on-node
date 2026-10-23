@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { LuaScriptCommand } from '../../src/commands/LuaScriptCommand.js';
-import { CRLF } from '../../src/constants.js';
+import { LuaScriptCommand } from '../../dist/commands/LuaScriptCommand.js';
+import { CRLF } from '../../dist/constants.js';
 
 const LOCAL_IP = '10.0.0.1';
 const SESSION_ID = 0xDEAD;

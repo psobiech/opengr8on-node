@@ -8,19 +8,56 @@ Objects: `DIMM` ×1, `DIN` ×1
 
 ## Init Sequence
 
-TODO: requires bus capture
+Single dimmer channel (ch=0) + one DIN input (ch=1):
+
+Dimmer channel:
+1. `CHANNEL_INIT [0x0c, 0, 0]`  (type=0x0c = dimmer)
+2. `MODULE_PARAM [0, 0, 1, 0]`
+3. `SET_RAMP_TIME [0, 500ms_lo, 500ms_hi, 0, 0]`  (default 500ms ramp)
+4. `DIMMER_SET_VALUE [0, 0, 0]`  (init to 0)
+
+DIN input:
+5. `CHANNEL_INIT [0x00, 1, 0]`
+6. `MODULE_PARAM [0, 1, 0, 0]`
+
+Batched F0 frames (fwType=2, hwType=44>9).
+
+Each sub-record layout: `type(1) len(1) meta(1) data[len]`. The F0 frame plen = count_byte + all_sub_record_bytes + 1.
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+Same format as DIMMER_MOSFET_DIN (hwType=26). TLV response:
+
+```
+count=02
+  01 02 10 [lo hi]    dim level LE u16 (0–1000, target level)
+                       parsed by parse_rx_dimmer_state: type byte 0x05 → u32 dimmer level at [1]
+  00 01 [meta] [inp]  digital input bitmask; byte[2]=value bitmask (bit 0=DIN active)
+```
+
+Standard ACK `AA 00 01 AB` returned when no state change.
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+F0 (MODULE_CMD) frame: `AA dest 0xF0 plen count [type len meta data...]... XOR_crc`
+
+There are two ramp mechanisms:
+- `SET_RAMP_TIME` (standalone): sub-type 0x06, 5 bytes: `[0, ramp_ms_lo, ramp_ms_hi, 0, 0]`
+- `batch_buf_append_ramp_time` (batched): sub-type 0x07, meta=0x10, 2 bytes: `[ramp_ms_lo, ramp_ms_hi]`
+
+`DIMMER_SET_VALUE`: sub-type 0x0c, 3 bytes: `[0, level_lo, level_hi]` (level 0–1000)
+
+```
+dim to 50%:   aa <addr> f0  0a 01  15 05 00 00 f4 01 00 00  0c 03 00 00 e8 03  <crc>
+              (SET_RAMP_TIME type=0x15 len=5 meta=0x00 [0, 0xf4, 0x01, 0, 0] = 500ms)
+              (DIMMER_SET_VALUE type=0x0c len=3 meta=0x00 [0, 0xe8, 0x03] = 1000)
+dim to 0:     aa <addr> f0  0a 01  15 05 00 00 f4 01 00 00  0c 03 00 00 00 00  <crc>
+              (SET_RAMP_TIME 500ms + DIMMER_SET_VALUE 0)
+```
 
 ---
 

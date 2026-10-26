@@ -8,19 +8,46 @@ Objects: `SWITCH` ×4, `PowerSupplyVoltage` ×1
 
 ## Init Sequence
 
-TODO: requires bus capture
+Four switch channels (each behaves as both output and input). Per channel (ch=0–3):
+
+1. `DEACTIVATE [1<<ch]`
+2. `CHANNEL_MAP [ch, 0x02]`
+3. `MODULE_PARAM [0, ch, 1, 0]`
+
+Plus input sensing per channel:
+4. `CHANNEL_INIT [0x00, ch, 0]`
+5. `MODULE_PARAM [0, ch, 0, 0]`
+
+Batched F0 frames (fwType=2, hwType=52>9).
+
+Each sub-record layout: `type(1) len(1) meta(1) data[len]`. The F0 frame plen = count_byte + all_sub_record_bytes + 1.
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+Four switch channels. TLV response:
+
+```
+count=03
+  00 01 [meta] [inp4]   4-bit input bitmask; parse_rx_input_bitmask: byte[1]=enable_mask, byte[2]=value bitmask (bit N = switch N active)
+  01 01 00 [state]      output state byte (0=all off)
+  02 02 10 [lo hi]      power supply voltage LE u16 ÷ 100 = V
+```
+
+Standard ACK `AA 00 01 AB` returned when no state change.
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+F0 (MODULE_CMD) frame: `AA dest 0xF0 plen count [type len meta data...]... XOR_crc`
+
+```
+switch1 ON:   aa <addr> f0  06 01 08 01 01 01  <crc>    ACTIVATE   type=0x08 len=1 meta=0x01 data=0x01
+switch1 OFF:  aa <addr> f0  06 01 09 01 01 01  <crc>    DEACTIVATE type=0x09 len=1 meta=0x01 data=0x01
+switch4 ON:   aa <addr> f0  06 01 08 01 01 08  <crc>    ACTIVATE   type=0x08 len=1 meta=0x01 data=0x08
+```
 
 ---
 

@@ -8,19 +8,62 @@ Objects: `ROLLER_SHUTTER` ×4, `DIN` ×8, `PowerSupplyVoltage` ×1
 
 ## Init Sequence
 
-TODO: requires bus capture
+Same pattern as ROLLER_SH_DIN_3 (hwType=42), ×4 roller channels (ch=1–4). DIN inputs (ch=0–7) also initialized.
+
+Per roller channel (inst=1–4):
+1. `CHANNEL_INIT [0x16, inst, 0]`
+2. `FEATURE_PARAM ×4`  (compact_idx 0–3 → MaxTime, MechanicalOffset, BlindsUpMaxTime, BlindsDownMaxTime; unit=10ms)
+3. `MODULE_PARAM [0, inst-1, 1, 0]`
+4. `ROLLER_CHAN_REG [0, inst]`
+
+Per DIN input (ch=0–7):
+5. `CHANNEL_INIT [0x00, ch, 0]`
+6. `MODULE_PARAM [0, ch, 0, 0]`
+
+Batched F0 frames (fwType=2, hwType=53>9).
+
+Each sub-record layout: `type(1) len(1) meta(1) data[len]`. The F0 frame plen = count_byte + all_sub_record_bytes + 1.
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+Four roller channels + 8 digital inputs. TLV response:
+
+```
+count=06
+  01 01 00 [state]                  combined motion state (0=stop, 1=up, 2=down)
+  16 03 00 [inst1] [pos%] [flags]   roller ch1: type=0x16, len=3; inst=1-based channel, pos 0–100%
+  16 03 00 [inst2] [pos%] [flags]   roller ch2: parse_rx_roller_position matches chan_idx==byte[1]-1
+  16 03 00 [inst3] [pos%] [flags]   roller ch3
+  16 03 00 [inst4] [pos%] [flags]   roller ch4
+  00 01 [meta] [inp8]               8-bit digital input bitmask; byte[2]=value bitmask
+```
+
+The flags byte encodes motion state via bits[7:5] (from `parse_rx_roller_complex`):
+- bits[7:5]=0: simple stop; 3 bytes from [0xb]
+- bits[7:5]=1 or 2: direction + 4-byte packed state at [0xb], position at [1]
+- bits[7:5]=3: 10-byte position data
+- bits[7:5]=5: 4-byte roller width at [1]
+- `0x00` — stopped at target (bits[7:5]=0)
+- `0x5a` — position uncertain / uninitialized
+
+The SET_POSITION command uses `send_roller_position_cmd`: sub-type 0x16, 4 bytes: `[direction_byte, position_percent, 0x00, 0x00]`. Direction derived from channel instance (chan_idx 0x14→0, 0x15→1, 0x16→2).
+
+Standard ACK `AA 00 01 AB` returned when no state change.
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+F0 (MODULE_CMD) frame: `AA dest 0xF0 plen count [type len meta data...]... XOR_crc`
+
+```
+roller1 STOP:   aa <addr> f0  06 01 09 01 01 30  <crc>         DEACTIVATE type=0x09 len=1 meta=0x01 data=0x30
+setpos ch2 50%: aa <addr> f0  08 01 16 03 00 00 02 32  <crc>   SET_POSITION type=0x16 len=3 meta=0x00 [dir=0x00 pos%=0x32(50%) 0x00]
+moveup ch1:     aa <addr> f0  06 01 08 01 01 01  <crc>         ACTIVATE type=0x08 len=1 meta=0x01 data=0x01
+movedown ch1:   aa <addr> f0  06 01 08 01 01 02  <crc>         ACTIVATE type=0x08 len=1 meta=0x01 data=0x02
+```
 
 ---
 

@@ -102,7 +102,7 @@ aa 00 0b 02  06 01 01 00  07 02 10 dc 00  6c
 
 Temperature (type=0x02) self-samples on a ~1.25 s schedule regardless of CLU commands. Between cycles the module sends only the 1-record baseline frame.
 
-Light sensor (type=0x07) behavior is firmware-variant dependent. On some units, a light frame follows each temperature frame (~113 ms apart). On others, type=0x07 is never emitted in STATUS_POLL even when the CLU-reported light value changes — the CLU may obtain the light reading via a MODULE_CMD channel not visible in STATUS_POLL sniffs. Capture type=0x07 opportunistically; absence does not indicate sensor failure.
+Light sensor (type=0x07) behavior is firmware-variant dependent. On some units, a light frame follows each temperature frame (~113 ms apart). On others, type=0x07 is never emitted in STATUS_POLL even when the CLU-reported light value changes — the CLU may obtain the light reading via a MODULE_CMD channel not observable in STATUS_POLL cycles. Capture type=0x07 opportunistically; absence does not indicate sensor failure.
 
 ### Button Press Frame (type=0x08, edge, one cycle only)
 

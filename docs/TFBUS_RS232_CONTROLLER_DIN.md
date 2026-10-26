@@ -8,19 +8,45 @@ Objects: `RS232_CONTROLLER` ×1, `PowerSupplyVoltage` ×1
 
 ## Init Sequence
 
-TODO: requires bus capture
+Single RS232 UART channel + voltage sensor. Init sends UART configuration parameters:
+
+1. `CHANNEL_INIT [0x1e, 0, 0]`  (type=0x1e = UART/RS232 channel)
+2. `MODULE_PARAM [0, 0, 1, 0]`
+3. UART config sub-record: baud rate, stop bits, parity (MODULE_CMD 0xF0 custom TLV)
+
+Batched F0 frames (fwType=2, hwType=43>9).
+
+Each sub-record layout: `type(1) len(1) meta(1) data[len]`. The F0 frame plen = count_byte + all_sub_record_bytes + 1.
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+RS232 module returns received data and connection status. TLV response:
+
+```
+count=02
+  01 01 00 [status]    connection status (0=idle)
+  02 02 10 [lo hi]     power supply voltage LE u16 ÷ 100 = V
+```
+
+Received serial data is delivered as unsolicited TYPE_TFBUS_CMD (0x31) frames:
+`AA dest 0x31 plen 0x1c [len] [data bytes...] XOR_crc` (sub_cmd=0x1c, variable-length).
+The 0x31 frame is always exactly 26 bytes (22-byte payload), zero-padded: `AA dest 0x31 cmd data[21] XOR_crc`.
+
+Standard ACK `AA 00 01 AB` returned when no data to report.
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+TYPE_TFBUS_CMD (0x31) frame: `AA dest 0x31 cmd data[21] XOR_crc` (always 26 bytes total, zero-padded)
+
+```
+send RS232 data:
+  aa <addr> 31 1c [len] [data bytes...] [zero-pad to 21 bytes] <crc>
+  (sub_cmd=0x1c, data sent to UART; total payload fixed at 22 bytes)
+```
 
 ---
 

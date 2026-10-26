@@ -8,19 +8,49 @@ Objects: `AnalogOUT` ×4, `AnalogIN` ×7, `ONE_WIRE_HUB` ×1
 
 ## Init Sequence
 
-TODO: requires bus capture
+Four analog output channels (ch=0–3) + seven analog inputs (ch=0–6, read-only):
+
+Per analog output channel (ch=0–3):
+1. `CHANNEL_INIT [0x25, ch, 0]`  (type=0x25 = analog output)
+2. `MODULE_PARAM [0, ch, 1, 0]`
+
+Per analog input channel (ch=0–6):
+3. `CHANNEL_INIT [0x00, ch, 0]`
+4. `MODULE_PARAM [0, ch, 0, 0]`
+
+Batched F0 frames (fwType=2, hwType=25>9).
+
+Each sub-record layout: `type(1) len(1) meta(1) data[len]`. The F0 frame plen = count_byte + all_sub_record_bytes + 1.
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+Analog input readings (7 channels) + voltage sensor. TLV response:
+
+```
+count=08
+  02 04 [meta] [b0 b1 b2 b3]  analog input ch0 float32 LE; meta encodes channel index
+  02 04 [meta] [b0 b1 b2 b3]  analog input ch1 float32 LE
+  ...  (×7 total)
+  02 02 10 [lo hi]             power supply voltage LE u16 ÷ 100 = V
+```
+
+Analog channel sub-records: type=0x02, len=4, meta=channel_index. Payload is IEEE 754 float32 little-endian (voltage 0–10V).
+
+Standard ACK `AA 00 01 AB` returned when no state change.
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+F0 (MODULE_CMD) frame: `AA dest 0xF0 plen count [type len meta data...]... XOR_crc`
+
+```
+set analog output ch0 to 5.0V:
+  aa <addr> f0  07 01  26 03 00 00 00 a0 40  <crc>
+  (type=0x26 len=3 meta=0x00 data=[0x00, 0x00, 0xa0, 0x40] — last 3 bytes are float32 LE for 5.0)
+```
 
 ---
 

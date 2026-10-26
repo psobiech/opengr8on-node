@@ -194,9 +194,10 @@ export function drawFrame(dest: number): Buffer {
   return buildFrame(dest, 0x31, tfbusCmdPayload(0x19));
 }
 
-export function rgbwSetFrame(dest: number, w: number, r: number, g: number, b: number, channelIdx: number): Buffer {
+// Wire order confirmed from firmware tfbus_cmd_rgbw_set: [r, g, b, w, flags/channelIdx]
+export function rgbwSetFrame(dest: number, r: number, g: number, b: number, w: number, channelIdx: number): Buffer {
   return buildFrame(dest, 0x31, tfbusCmdPayload(0x06, Buffer.from([
-    w & 0xFF, r & 0xFF, g & 0xFF, b & 0xFF, channelIdx & 0xFF,
+    r & 0xFF, g & 0xFF, b & 0xFF, w & 0xFF, channelIdx & 0xFF,
   ])));
 }
 
@@ -245,4 +246,79 @@ export function rgbwSetAltFrame(dest: number, a: number, b: number, c: number, d
   return buildFrame(dest, 0x31, tfbusCmdPayload(0x1B, Buffer.from([
     a & 0xFF, b & 0xFF, c & 0xFF, d & 0xFF, e & 0xFF,
   ])));
+}
+
+// sub_cmd 0x02 — 4-byte data payload (tfbus_cmd_02)
+export function tfbusCmd02Frame(dest: number, data: number): Buffer {
+  const b = Buffer.allocUnsafe(4);
+  b.writeUInt32LE(data >>> 0, 0);
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x02, b));
+}
+
+// sub_cmd 0x05 — print text without font byte: [x, y, text[16], null] (tfbus_cmd_print_text_no_font)
+export function printTextNoFontFrame(dest: number, x: number, y: number, text: string): Buffer {
+  const data = Buffer.alloc(18, 0);
+  data[0] = x & 0xFF;
+  data[1] = y & 0xFF;
+  Buffer.from(text, 'ascii').copy(data, 2, 0, 16);
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x05, data));
+}
+
+// sub_cmd 0x07 — 3-byte payload [a, b, c] (tfbus_cmd_07)
+export function tfbusCmd07Frame(dest: number, a: number, b: number, c: number): Buffer {
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x07, Buffer.from([a & 0xFF, b & 0xFF, c & 0xFF])));
+}
+
+// sub_cmd 0x08 — display text without font byte: [x, y, text[16], null] (tfbus_cmd_08_display)
+export function displayTextFrame(dest: number, x: number, y: number, text: string): Buffer {
+  const data = Buffer.alloc(18, 0);
+  data[0] = x & 0xFF;
+  data[1] = y & 0xFF;
+  Buffer.from(text, 'ascii').copy(data, 2, 0, 16);
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x08, data));
+}
+
+// sub_cmd 0x09 — no payload (tfbus_cmd_09)
+export function tfbusCmd09Frame(dest: number): Buffer {
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x09));
+}
+
+// sub_cmd 0x0C — 1-byte value (tfbus_cmd_0c)
+export function tfbusCmd0CFrame(dest: number, val: number): Buffer {
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x0C, Buffer.from([val & 0xFF])));
+}
+
+// sub_cmd 0x0D — 1-byte value (tfbus_cmd_0d)
+export function tfbusCmd0DFrame(dest: number, val: number): Buffer {
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x0D, Buffer.from([val & 0xFF])));
+}
+
+// sub_cmd 0x10 — 1-byte value (tfbus_cmd_10)
+export function tfbusCmd10Frame(dest: number, val: number): Buffer {
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x10, Buffer.from([val & 0xFF])));
+}
+
+// sub_cmd 0x11 — 1-byte value (tfbus_cmd_11)
+export function tfbusCmd11Frame(dest: number, val: number): Buffer {
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x11, Buffer.from([val & 0xFF])));
+}
+
+// sub_cmd 0x14 — 1-byte value (tfbus_cmd_14)
+export function tfbusCmd14Frame(dest: number, val: number): Buffer {
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x14, Buffer.from([val & 0xFF])));
+}
+
+// sub_cmd 0x15 — 1-byte value (tfbus_cmd_15)
+export function tfbusCmd15Frame(dest: number, val: number): Buffer {
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x15, Buffer.from([val & 0xFF])));
+}
+
+// sub_cmd 0x16 — 1-byte value (tfbus_cmd_16)
+export function tfbusCmd16Frame(dest: number, val: number): Buffer {
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x16, Buffer.from([val & 0xFF])));
+}
+
+// sub_cmd 0x1C — variable-length payload (tfbus_cmd_1c)
+export function tfbusCmd1CFrame(dest: number, payload: Buffer | number[] = Buffer.alloc(0)): Buffer {
+  return buildFrame(dest, 0x31, tfbusCmdPayload(0x1C, payload));
 }

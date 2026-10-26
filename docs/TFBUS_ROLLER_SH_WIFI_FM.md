@@ -8,19 +8,57 @@ Objects: `ROLLER_SHUTTER` ×1, `DIN` ×2
 
 ## Init Sequence
 
-TODO: requires bus capture
+Same pattern as ROLLER_SH_DIN_3 (hwType=42), single roller channel (ch=1). DIN inputs ch=0,1 also initialized.
+
+Roller channel:
+1. `CHANNEL_INIT [0x16, 1, 0]`
+2. `FEATURE_PARAM ×4`  (compact_idx 0–3 → MaxTime, MechanicalOffset, BlindsUpMaxTime, BlindsDownMaxTime; unit=10ms)
+3. `MODULE_PARAM [0, 0, 1, 0]`
+4. `ROLLER_CHAN_REG [0, 1]`
+
+DIN inputs (ch=0,1):
+5. `CHANNEL_INIT [0x00, ch, 0]`
+6. `MODULE_PARAM [0, ch, 0, 0]`
+
+Batched F0 frames (fwType=2, hwType=41>9).
+
+Each sub-record layout: `type(1) len(1) meta(1) data[len]`. The F0 frame plen = count_byte + all_sub_record_bytes + 1.
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+Single roller channel + two digital inputs. TLV response:
+
+```
+count=03
+  01 01 00 [state]                motion state (0=stop, 1=up, 2=down)
+  16 03 00 [inst] [pos%] [flags]  roller position: type=0x16, len=3; inst=1 (1-based);
+                                   parse_rx_roller_position matches chan_idx==byte[1]-1
+                                   flags bits[7:5]: 0=stopped, 1/2=moving+direction, 3=10B pos data, 5=width
+  00 01 [meta] [inp]              digital input bitmask; byte[2]=value bitmask (bit 0=DIN0, bit 1=DIN1)
+```
+
+Known flag values:
+- `0x00` — stopped at target (bits[7:5]=0)
+- `0x5a` — position uncertain / uninitialized
+
+The SET_POSITION command uses `send_roller_position_cmd`: sub-type 0x16, 4 bytes: `[direction_byte, position_percent, 0x00, 0x00]`.
+
+Standard ACK `AA 00 01 AB` returned when no state change.
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+F0 (MODULE_CMD) frame: `AA dest 0xF0 plen count [type len meta data...]... XOR_crc`
+
+```
+roller STOP:    aa <addr> f0  06 01 09 01 01 30  <crc>           DEACTIVATE type=0x09 len=1 meta=0x01 data=0x30
+setpos 50%:     aa <addr> f0  08 01 16 03 00 00 01 32  <crc>     SET_POSITION type=0x16 len=3 meta=0x00 [dir=0x00 pos%=0x32(50%) 0x00]
+moveup:         aa <addr> f0  06 01 08 01 01 01  <crc>           ACTIVATE type=0x08 len=1 meta=0x01 data=0x01
+movedown:       aa <addr> f0  06 01 08 01 01 02  <crc>           ACTIVATE type=0x08 len=1 meta=0x01 data=0x02
+```
 
 ---
 

@@ -11,11 +11,27 @@ export interface ButtonEvent { addr: number; buttonIndex: number; eventId: numbe
 export interface AckEvent { addr: number; }
 export interface ResponseEvent { addr: number; txType: number; records: TLVRecord[] | null; raw: Buffer; }
 
+const TX_TTL_MS = 250;
+
+interface TXEntry { type: number; ts: number; }
+
+function looksLikeTLV(payload: Buffer): boolean {
+  if (payload.length === 0) return false;
+  const count = payload[0];
+  if (count === 0 || count > 10) return false;
+  let pos = 1;
+  for (let i = 0; i < count; i++) {
+    if (pos + 3 > payload.length) return false;
+    pos += 3 + payload[pos + 1];
+  }
+  return pos === payload.length;
+}
+
 export class TFBusEventBus extends EventEmitter {
   #transport: TFBusTransport;
   #running = false;
-  #lastTxType: number | null = null;
-  #lastTxAddr: number | null = null;
+  #lastTx = new Map<number, TXEntry>();   // addr → {type, ts}
+  #pendingAddr: number | null = null;     // addr of most-recent TX
 
   constructor(transport: TFBusTransport) {
     super();
@@ -77,8 +93,8 @@ export class TFBusEventBus extends EventEmitter {
       if (buf[1] !== 0x00) {
         const txf = parseBusTxFrame(buf);
         if (txf) {
-          this.#lastTxType = txf.type;
-          this.#lastTxAddr = txf.dest;
+          this.#lastTx.set(txf.dest, { type: txf.type, ts: Date.now() });
+          this.#pendingAddr = txf.dest;
         }
         this.emit('frame', { buf, dir: 'tx' } satisfies FrameEvent);
         continue;
@@ -86,15 +102,35 @@ export class TFBusEventBus extends EventEmitter {
 
       this.emit('frame', { buf, dir: 'rx' } satisfies FrameEvent);
 
-      const addr = this.#lastTxAddr;
-      const txType = this.#lastTxType;
-      if (addr === null) continue;
-
       const rxFrame = parseRxFrame(buf);
       if (!rxFrame) continue;
 
-      this.#lastTxAddr = null;
-      this.#lastTxType = null;
+      // Resolve TX context with TTL guard
+      const now = Date.now();
+      let addr: number | null = null;
+      let txType: number | null = null;
+      if (this.#pendingAddr !== null) {
+        const entry = this.#lastTx.get(this.#pendingAddr);
+        if (entry && (now - entry.ts) <= TX_TTL_MS) {
+          addr = this.#pendingAddr;
+          txType = entry.type;
+          this.#lastTx.delete(this.#pendingAddr);
+        }
+      }
+      this.#pendingAddr = null;
+      // Evict stale entries
+      for (const [a, e] of this.#lastTx) {
+        if (now - e.ts > TX_TTL_MS) this.#lastTx.delete(a);
+      }
+
+      if (addr === null) {
+        // Missed TX frame — try TLV heuristic to recover status-poll dispatch
+        if (rxFrame.payload.length > 0 && looksLikeTLV(rxFrame.payload)) {
+          const { records, raw } = parseStatusPoll(rxFrame.payload);
+          this.emit('status', { addr: 0, records, raw } satisfies StatusEvent);
+        }
+        continue;
+      }
 
       if (txType === 0xF9) {
         const version = parseVersionResponse(rxFrame.payload);
@@ -115,11 +151,11 @@ export class TFBusEventBus extends EventEmitter {
           }
         }
       } else {
-        if (rxFrame.payload.length === 0 || txType === null) {
+        if (rxFrame.payload.length === 0) {
           this.emit('ack', { addr } satisfies AckEvent);
         } else {
           const { records, raw } = parseStatusPoll(rxFrame.payload);
-          this.emit('response', { addr, txType, records, raw } satisfies ResponseEvent);
+          this.emit('response', { addr, txType: txType!, records, raw } satisfies ResponseEvent);
         }
       }
     }

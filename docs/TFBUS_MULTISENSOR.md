@@ -8,19 +8,53 @@ Objects: `TEMPERATURE_SENSOR` ×1, `LIGHT_SENSOR_LUX` ×1, `HUMIDITY_SENSOR` ×1
 
 ## Init Sequence
 
-TODO: requires bus capture
+All sensor channels are read-only inputs. Per sensor channel:
+
+1. `CHANNEL_INIT [0x00, ch, 0]`
+2. `MODULE_PARAM [0, ch, 0, 0]`
+
+IR_CONTROLLER output channel:
+3. `CHANNEL_INIT [0x2c, ch, 0]`  (type=0x2c = IR output)
+4. `MODULE_PARAM [0, ch, 1, 0]`
+
+Batched F0 frames (fwType=2, hwType=45>9).
+
+Each sub-record layout: `type(1) len(1) meta(1) data[len]`. The F0 frame plen = count_byte + all_sub_record_bytes + 1.
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+Multiple sensor readings. TLV response includes sub-records for each active sensor:
+
+```
+count=N
+  02 02 10 [lo hi]    temperature LE int16 ÷ 100 = °C
+  02 02 10 [lo hi]    humidity LE int16 ÷ 100 = %
+  02 02 10 [lo hi]    pressure LE int16 ÷ 10 = hPa
+  02 02 10 [lo hi]    CO2 LE int16 = ppm
+  02 02 10 [lo hi]    VOC LE int16 = ppb
+  07 02 10 [lo hi]    light LE int16 raw ADC → lux
+  02 02 10 [lo hi]    sound LE int16 = dB
+  02 02 10 [lo hi]    power supply voltage LE u16 ÷ 100 = V
+```
+
+Meta byte encodes channel/sensor identity. Only sensors with changed values are reported; unchanged sensors may be absent from poll response.
+
+Standard ACK `AA 00 01 AB` returned when no state change.
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+No direct output commands for most sensors — read-only.
+
+Poll response example (temp=21.5°C, hum=45%):
+```
+aa 00 0e 02  02 02 10 6c 08  02 02 11 c4 11  <crc>
+             type=0x02 len=2 meta=0x10 data=[0x6c 0x08]  (0x086c = 2156 ÷ 100 = 21.56°C)
+             type=0x02 len=2 meta=0x11 data=[0xc4 0x11]  (0x11c4 = 4548 ÷ 100 = 45.48%)
+```
 
 ---
 

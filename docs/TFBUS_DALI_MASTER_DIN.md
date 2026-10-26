@@ -8,19 +8,49 @@ Objects: `DALI_MASTER` ×1, `PowerSupplyVoltage` ×1
 
 ## Init Sequence
 
-TODO: requires bus capture
+DALI_MASTER acts as a DALI bus controller. Single master channel:
+
+1. `CHANNEL_INIT [0x27, 0, 0]`  (type=0x27 = DALI master channel)
+2. `MODULE_PARAM [0, 0, 1, 0]`
+
+Individual DALI gear addressing and group configuration follows via TFBUS_CMD (0x31) frames after init.
+
+Batched F0 frames (fwType=2, hwType=39>9).
+
+Each F0 sub-record layout: `type(1) len(1) meta(1) data[len]`. F0 plen = count_byte + all_sub_record_bytes + 1.
+DALI-specific commands use TYPE_TFBUS_CMD (0x31): always 26-byte frame `AA dest 0x31 cmd data[21] XOR_crc`.
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+DALI master status + voltage sensor. TLV response:
+
+```
+count=02
+  01 01 00 [status]    DALI bus status (0=idle, 1=busy, 2=collision)
+  02 02 10 [lo hi]     power supply voltage LE u16 ÷ 100 = V
+```
+
+DALI gear status updates are delivered as asynchronous TFBUS_CMD frames, not in STATUS_POLL response.
+
+Standard ACK `AA 00 01 AB` returned when no status change.
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+TYPE_TFBUS_CMD (0x31) frame: `AA dest 0x31 cmd data[21] XOR_crc` (always 26 bytes total, zero-padded)
+
+```
+DALI broadcast OFF (all gear):
+  aa <addr> 31 0e 00 [gear_addr] [dali_cmd] [zero-pad to 21 bytes] <crc>
+  (sub_cmd=0x0e EXEC_METHOD for DALI command)
+
+DALI direct level gear 0x01 to 50%:
+  aa <addr> 31 06 [R] [G] [B] [W] [flags] [zero-pad to 21 bytes] <crc>
+  (sub_cmd=0x06 RGBW_SET used for brightness mapping)
+```
 
 ---
 

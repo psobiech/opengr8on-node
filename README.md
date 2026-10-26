@@ -113,6 +113,89 @@ tfbus> set ROLLER_Roleta1 Position 50
   set Position=50 → addr=7 [ROLLER_Roleta1]
 ```
 
+### Narzędzie `clu-repl`
+
+Interaktywna powłoka do odpytywania i sterowania obiektami CLU po nazwie, z podpowiadaniem tabulatorem.
+
+```
+clu-repl --omp-file ./runtime/project.omp --local-address 192.168.1.100
+         [--clu-port 1234]
+         [--interfaces-dir ./docs/device-interfaces]
+```
+
+**Składnia:**
+
+```
+list / ls                           — lista CLU wczytanych z projektu
+CLU.objects                         — lista obiektów na CLU
+CLU.OBJECT                          — info o obiekcie (cechy i metody)
+CLU.OBJECT.get()                    — odczyt wszystkich cech
+CLU.OBJECT.get(Cecha)               — odczyt jednej cechy po nazwie
+CLU.OBJECT.set(Cecha, wartość)      — zapis cechy (wartość Lua)
+CLU.OBJECT.Metoda(arg…)             — wywołanie metody po nazwie
+exec <CLU> <wyrażenie-Lua>          — dowolne wyrażenie Lua na CLU
+help                                — pomoc
+exit / quit                         — wyjście
+```
+
+Przy jednym CLU przedrostek `CLU.` jest opcjonalny.
+
+Przykład sesji:
+```
+$ npx clu-repl --omp-file ./runtime/project.omp --local-address 192.168.1.100
+clu> list
+  MyCLU           ip=192.168.1.50   serial=0D123456  objects=42
+clu> MyCLU.objects
+  CZUJNIK_TEMP_01  RELAY_KUCHNIA  DIMMER_SALON  …
+clu> MyCLU.CZUJNIK_TEMP_01
+  CZUJNIK_TEMP_01  (PANEL_SENSOR_TEMP)  → PAN3335
+  features:
+    [0] Temperature                    r
+    [1] Threshold                      rw
+    …
+clu> MyCLU.CZUJNIK_TEMP_01.get(Threshold)
+  => 0.10
+clu> MyCLU.CZUJNIK_TEMP_01.set(Threshold, 0.5)
+  => nil
+clu> MyCLU.RELAY_KUCHNIA.Switch()
+  => nil
+clu> exec MyCLU checkAlive()
+  => 0D123456
+```
+
+---
+
+### Serwery MCP (`clu-mcp`, `tfbus-mcp`)
+
+Serwery MCP (Model Context Protocol) do integracji z narzędziami AI (np. Claude Code).
+
+**`clu-mcp`** — udostępnia operacje CLU jako narzędzia MCP:
+```
+clu-mcp --omp-file ./runtime/project.omp --local-address 192.168.1.100
+        [--clu-port 1234] [--http-port 3000]
+```
+
+**`tfbus-mcp`** — udostępnia magistralę TFBUS jako narzędzia MCP (monitor + sterowanie):
+```
+tfbus-mcp [--port /dev/ttyUSB0] [--http-port 3000]
+```
+
+Bez `--http-port` serwer działa wyłącznie przez stdio (MCP stdio transport).
+
+---
+
+### Narzędzie `transcribe-modules`
+
+Parsuje katalog interfejsów urządzeń i wypisuje skrócony JSON z cechami i metodami wszystkich modułów — przydatne do inspekcji lub generowania dokumentacji.
+
+```
+transcribe-modules [--dir ./docs/device-interfaces] [--lang pl] [--output modules.json]
+```
+
+Bez `--output` wynik trafia na stdout.
+
+---
+
 ### Projekt siostrzany
 
 [opengr8on](https://github.com/psobiech/opengr8on) — implementacja vCLU w Javie, bardziej dojrzała i przetestowana. Jeśli szukasz stabilnej implementacji wirtualnego CLU, zacznij od tamtego projektu.
@@ -265,6 +348,89 @@ tfbus> on DOUT_Light
 tfbus> set ROLLER_Blind Position 50
   set Position=50 → addr=7 [ROLLER_Blind]
 ```
+
+### `clu-repl`
+
+Interactive shell for querying and controlling CLU objects by name, with tab completion.
+
+```
+clu-repl --omp-file ./runtime/project.omp --local-address 192.168.1.100
+         [--clu-port 1234]
+         [--interfaces-dir ./docs/device-interfaces]
+```
+
+**Syntax:**
+
+```
+list / ls                           — list CLUs loaded from the project
+CLU.objects                         — list objects on CLU
+CLU.OBJECT                          — show object info (features and methods)
+CLU.OBJECT.get()                    — read all feature values
+CLU.OBJECT.get(Feature)             — read one feature by name
+CLU.OBJECT.set(Feature, value)      — set feature (Lua literal value)
+CLU.OBJECT.Method(args…)            — call method by name
+exec <CLU> <lua-expression>         — execute arbitrary Lua on CLU
+help                                — this text
+exit / quit                         — exit
+```
+
+With a single CLU the `CLU.` prefix is optional. Tab completion works for CLU names, object names, and actions.
+
+Example session:
+```
+$ npx clu-repl --omp-file ./runtime/project.omp --local-address 192.168.1.100
+clu> list
+  MyCLU           ip=192.168.1.50   serial=0D123456  objects=42
+clu> MyCLU.objects
+  TEMP_SENSOR_01  RELAY_KITCHEN  DIMMER_LIVING  …
+clu> MyCLU.TEMP_SENSOR_01
+  TEMP_SENSOR_01  (PANEL_SENSOR_TEMP)  → PAN3335
+  features:
+    [0] Temperature                    r
+    [1] Threshold                      rw
+    …
+clu> MyCLU.TEMP_SENSOR_01.get(Threshold)
+  => 0.10
+clu> MyCLU.TEMP_SENSOR_01.set(Threshold, 0.5)
+  => nil
+clu> MyCLU.RELAY_KITCHEN.Switch()
+  => nil
+clu> exec MyCLU checkAlive()
+  => 0D123456
+```
+
+---
+
+### MCP servers (`clu-mcp`, `tfbus-mcp`)
+
+MCP (Model Context Protocol) servers for AI tool integration (e.g. Claude Code).
+
+**`clu-mcp`** — exposes CLU operations as MCP tools:
+```
+clu-mcp --omp-file ./runtime/project.omp --local-address 192.168.1.100
+        [--clu-port 1234] [--http-port 3000]
+```
+
+**`tfbus-mcp`** — exposes the TFBUS bus as MCP tools (monitor + control):
+```
+tfbus-mcp [--port /dev/ttyUSB0] [--http-port 3000]
+```
+
+Without `--http-port` both servers operate over stdio only (MCP stdio transport).
+
+---
+
+### `transcribe-modules`
+
+Parses the device-interfaces directory and outputs a compact JSON of all module features and methods — useful for inspection or documentation generation.
+
+```
+transcribe-modules [--dir ./docs/device-interfaces] [--lang en] [--output modules.json]
+```
+
+Without `--output` the result goes to stdout.
+
+---
 
 ### Sister project
 

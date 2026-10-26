@@ -8,19 +8,38 @@ Objects: `DALI_GEAR` ×1
 
 ## Init Sequence
 
-TODO: requires bus capture
+DALI_GEAR is a virtual object hosted on DALI_MASTER_DIN (hwType=39). It does not exist as an independent TFBUS module and has no separate RS485 address. All communication goes through the DALI_MASTER_DIN module.
+
+Init: DALI_MASTER sends DALI addressing/group assignment commands to the gear over the DALI bus, translated via TFBUS_CMD (0x31) frames to the master module.
+
+TYPE_TFBUS_CMD (0x31) frame: always 26 bytes — `AA dest 0x31 cmd data[21] XOR_crc` (zero-padded).
+
+(hwType=40, fwType=9 identifies DALI gear; no independent TFBUS RS485 frames)
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+No direct STATUS_POLL — gear status is relayed from DALI_MASTER. The master delivers gear feedback as asynchronous TFBUS_CMD (0x31) upstream frames when DALI device status changes.
+
+Typical encoded state fields:
+- dim level (0–254 DALI scale)
+- fault/lamp fail flags
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+All DALI gear commands are sent TO the DALI_MASTER_DIN module's RS485 address using 26-byte TFBUS_CMD frames:
+
+```
+set gear 0x01 level 127 (≈50%):
+  aa <dali_master_addr> 31 0e 00 01 fe 7f [zero-pad to 21 bytes] <crc>
+  (sub_cmd=0x0e, gear=0x01, cmd bytes follow)
+
+gear OFF:
+  aa <dali_master_addr> 31 0e 00 01 00 00 [zero-pad to 21 bytes] <crc>
+```
 
 ---
 

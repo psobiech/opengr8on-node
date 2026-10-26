@@ -8,19 +8,64 @@ Objects: `LEDRGB` ×1, `LED_CHANNEL` ×4, `DIN` ×2, `LED_CCT` ×2, `PowerSupply
 
 ## Init Sequence
 
-TODO: requires bus capture
+Same pattern as LED_RGBW_DIN (hwType=24). Four RGBW channels (ch=0–3), two DIN inputs (ch=0,1).
+
+Per RGBW channel (ch=0–3):
+1. `CHANNEL_INIT [0x1b, ch, 0]`  (type=0x1b = RGBW)
+2. `MODULE_PARAM [0, ch, 1, 0]`
+
+Initial state (all channels 0):
+3. `SET_RAMP_TIME [0, 0, 0, 0, 0]`
+4. `SET_CHANNEL_VALUE ×4` — `[0,0] [1,0] [2,0] [3,0]`
+
+DIN inputs (ch=0,1):
+5. `CHANNEL_INIT [0x00, ch, 0]`
+6. `MODULE_PARAM [0, ch, 0, 0]`
+
+Batched F0 frames using `batch_buf_append_rgbw_channels` (fwType=2, hwType=29>9).
+
+Each sub-record layout: `type(1) len(1) meta(1) data[len]`. The F0 frame plen = count_byte + all_sub_record_bytes + 1.
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+Four RGBW channel values + two digital inputs. TLV response:
+
+```
+count=06
+  01 04 00 [R] [G] [B] [W]    RGBW output values (current level 0–255 each)
+  05 01 10 [R]                 ch0 (R): type=0x05, len=1, meta=0x10; parse_rx_dimmer_channel_value reads 2 bytes at [chan_idx*2 - 0x23]
+  05 01 11 [G]                 ch1 (G): meta=0x11 (chan_idx=1)
+  05 01 12 [B]                 ch2 (B): meta=0x12 (chan_idx=2)
+  05 01 13 [W]                 ch3 (W): meta=0x13 (chan_idx=3)
+  00 01 [meta] [inp]           digital input bitmask; byte[2]=value bitmask (bit 0=DIN0, bit 1=DIN1)
+```
+
+Standard ACK `AA 00 01 AB` returned when no state change.
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+F0 (MODULE_CMD) frame: `AA dest 0xF0 plen count [type len meta data...]... XOR_crc`
+
+`batch_buf_append_rgbw_channels` produces 4 × sub-type 0x05: `type=0x05 len=2 meta=0x10 data=[chan_idx, value]`
+- chan 0=R, 1=G, 2=B, 3=W; value 0–255
+
+`SET_RAMP_TIME` (batched, `batch_buf_append_ramp_time`): sub-type 0x07, meta=0x10, 2 bytes: `[ramp_ms_lo, ramp_ms_hi]`
+
+```
+set R=255 G=0 B=0 W=0 ramp=0:
+  aa <addr> f0  0a 01  06 05 00 00 00 00 00 00
+                        1b 08 00 ff 00 00 00 00 01 00  <crc>
+  (SET_RAMP_TIME type=0x06 len=5 [0,0,0,0,0] = 0ms)
+  (SET_CHANNEL_VALUE type=0x1b len=8 meta=0x00 [R=0xff,G=0x00,B=0x00,W=0x00, flags=0x00, 0x01, 0x00])
+
+all off:
+  aa <addr> f0  0a 01  06 05 00 00 00 00 00 00
+                        1b 08 00 00 00 00 00 00 01 00  <crc>
+```
 
 ---
 

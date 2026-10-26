@@ -8,19 +8,43 @@ Objects: `DIN` ×4, `PowerSupplyVoltage` ×1
 
 ## Init Sequence
 
-TODO: requires bus capture
+Per input channel (ch=0–3):
+
+1. `CHANNEL_INIT [0x00, ch, 0]`
+2. `MODULE_PARAM [0, ch, 0, 0]`  (io_dir=0 = input)
+
+Batched F0 frames (fwType=2, hwType=51>9).
+
+Each sub-record layout: `type(1) len(1) meta(1) data[len]`. The F0 frame plen = count_byte + all_sub_record_bytes + 1.
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+Four digital inputs + voltage sensor. TLV response:
+
+```
+count=02
+  00 01 [meta] [inp4]   4-bit digital input bitmask (bit N = DIN_N active)
+                         parse_rx_input_bitmask: byte[1]=enable_mask, byte[2]=value_mask
+  02 02 10 [lo hi]      power supply voltage LE u16 ÷ 100 = V
+```
+
+Standard ACK `AA 00 01 AB` returned when no state change.
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+No output commands — read-only module.
+
+Poll response example (DIN0 active, voltage=24.00V):
+```
+aa 00 08 02  00 01 01 01  02 02 10 60 09  <crc>
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+             type=0x00 len=1 meta=0x01 data=[0x01]  (bit 0 set = DIN0 active)
+             type=0x02 len=2 meta=0x10 data=[0x60 0x09]  (0x0960 = 2400 → 24.00V)
+```
 
 ---
 

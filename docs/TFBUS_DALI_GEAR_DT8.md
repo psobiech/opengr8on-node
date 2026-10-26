@@ -8,19 +8,40 @@ Objects: `DALI_GEAR_DT8` ×1
 
 ## Init Sequence
 
-TODO: requires bus capture
+DALI_GEAR_DT8 is a virtual object hosted on DALI_MASTER_DIN (hwType=39), same as DALI_GEAR_BASIC but for DALI DT8 colour gear. No independent RS485 address.
+
+Init: DALI_MASTER sends DT8-specific addressing and colour type configuration commands to the gear over the DALI bus via TFBUS_CMD (0x31) frames.
+
+TYPE_TFBUS_CMD (0x31) frame: always 26 bytes — `AA dest 0x31 cmd data[21] XOR_crc` (zero-padded).
+
+(hwType=40, fwType=8 identifies DT8 colour gear; no independent TFBUS RS485 frames)
 
 ---
 
 ## STATUS_POLL Response
 
-TODO: requires bus capture
+No direct STATUS_POLL — same as DALI_GEAR_BASIC. All status relayed from DALI_MASTER_DIN.
+
+DT8 additional state fields beyond DALI_GEAR_BASIC:
+- colour temperature (CCT) in Kelvin
+- RGBWAF component levels
+- colour type (CCT / XY / RGBWAF)
 
 ---
 
 ## Wire Examples
 
-TODO: requires bus capture
+All DT8 gear commands are sent TO the DALI_MASTER_DIN module's RS485 address using 26-byte TFBUS_CMD frames:
+
+```
+set CCT 4000K:
+  aa <dali_master_addr> 31 06 [R] [G] [B] [W] [flags] [zero-pad to 21 bytes] <crc>
+  (sub_cmd=0x06 RGBW_SET with DT8 colour fields)
+
+set DT8 RGBW brightness:
+  aa <dali_master_addr> 31 1b [R] [G] [B] [W] [zero-pad to 21 bytes] <crc>
+  (sub_cmd=0x1b RGBW_SET_ALT)
+```
 
 ---
 

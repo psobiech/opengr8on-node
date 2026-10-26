@@ -104,7 +104,7 @@ Ramp time can be passed as optional third arg: `<ObjName>:execute(3, 255, 500)` 
 
 Module responds ACK (`AA 00 01 AB`) by default. A data frame is only emitted when a MODULE_CMD coincides with the STATUS_POLL exchange (timing collision — non-deterministic; see TFBUS_TESTING.md).
 
-**One captured data frame** (R transitioning 255→0 with ramp=2000 ms):
+**Example data frame** (R transitioning 255→0 with ramp=2000 ms):
 
 ```
 aa 00 06 01  06 01 01 00  ab
@@ -119,15 +119,15 @@ aa 00 06 01  06 01 01 00  ab
 └──────────────────────── 0xAA start
 ```
 
-Decoded by sniffer: `{ type: 6, meta: 1, data: "00" }`
+Protocol decode: `{ type: 6, meta: 1, data: "00" }`
 
 Type=6 matches `SET_RAMP_TIME` command code. Full mapping of type/meta/data across channels not yet decoded (capture is timing-dependent).
 
 ---
 
-## Observed Wire Captures
+## Wire Protocol Examples
 
-Captured during live RGB brightness adjustment (addr=5, ~10s session):
+RGB brightness adjustment (addr=5):
 
 | Value (dec) | Value (hex) | Notes |
 |-------------|-------------|-------|

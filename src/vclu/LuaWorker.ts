@@ -2,7 +2,7 @@
  * Worker thread that hosts the wasmoon Lua engine + VirtualSystem.
  * Spawned by LuaThread. Communicates with the main thread via:
  *   - SharedArrayBuffer (SAB) for synchronous luaCall requests/responses
- *   - postMessage for async notifications (clientReport, started, error)
+ *   - postMessage for async notifications (clientReport, started, error{kind})
  *
  * SAB layout (131084 bytes):
  *   [0]        Int32  state: 0=idle, 1=pending, 2=result
@@ -208,7 +208,7 @@ await engine.doString('package.path = "/lua/?.lua;" .. package.path');
 
 // ── Run the Lua script ────────────────────────────────────────────────────────
 if (!existsSync(scriptPath)) {
-  send({ type: 'error', message: `Script not found: ${scriptPath}` });
+  send({ type: 'error', kind: 'notFound', message: `Script not found: ${scriptPath}` });
   process.exit(1);
 }
 
@@ -218,5 +218,5 @@ try {
 } catch (e: unknown) {
   const msg = e instanceof Error ? e.message : String(e);
   console.error('[LuaWorker] script error:', msg);
-  send({ type: 'scriptError', message: msg });
+  send({ type: 'error', kind: 'scriptError', message: msg });
 }

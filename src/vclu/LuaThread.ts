@@ -74,7 +74,6 @@ export class LuaThread {
         started:      ()    => settle(),
         clientReport: (msg) => this._onClientReport?.(msg.addr, msg.port, msg.sessionId, msg.response),
         error:        (msg) => settle(new Error(msg.message)),
-        scriptError:  (msg) => settle(new Error(msg.message)),
       };
       this._worker.on('message', (msg: WorkerMessage) =>
         (handlers[msg.type] as (msg: WorkerMessage) => void)(msg),

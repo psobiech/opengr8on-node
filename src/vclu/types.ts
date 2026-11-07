@@ -45,8 +45,7 @@ export interface IVirtualCLU extends IVirtualObject {
 export type WorkerMessage =
   | { type: 'started' }
   | { type: 'clientReport'; addr: string; port: number; sessionId: number; response: string }
-  | { type: 'error'; message: string }
-  | { type: 'scriptError'; message: string };
+  | { type: 'error'; kind: 'notFound' | 'scriptError'; message: string };
 
 export interface IVirtualSystem {
   readonly localAddress: string | undefined;

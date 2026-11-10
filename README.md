@@ -16,6 +16,14 @@ Ten projekt zawiera:
 - **Narzędzia TFBUS** — monitor magistrali RS485 i interaktywny REPL do diagnostyki i sterowania modułami z linii polecen
 - **Parser interfejsów urządzeń** — parsowanie plików XML opisujących API modułów i urządzeń CLU/GATE
 
+### Inne projekty powiązane
+
+[opengr8on](https://github.com/psobiech/opengr8on) — implementacja vCLU w Javie, bardziej dojrzała i przetestowana. Jeśli szukasz stabilnej implementacji wirtualnego CLU, zacznij od tamtego projektu.
+
+[opengr8on-clu-esp32](https://github.com/psobiech/opengr8on-clu-esp32) — sprzętowy CLU na ESP32-S3 (port w C vCLU i `src/tfbus` z tego repozytorium).
+
+[opengr8on-smartpanel-rp2350](https://github.com/psobiech/opengr8on-smartpanel-rp2350) — emulator modułu SMART_PANEL_FM_4 na płytce RP2350 z ekranem dotykowym.
+
 ### Dokumentacja protokołu
 
 | Dokument | Opis |
@@ -213,11 +221,7 @@ Bez `--output` wynik trafia na stdout.
 
 ---
 
-### Projekt siostrzany
-
-[opengr8on](https://github.com/psobiech/opengr8on) — implementacja vCLU w Javie, bardziej dojrzała i przetestowana. Jeśli szukasz stabilnej implementacji wirtualnego CLU, zacznij od tamtego projektu.
-
-### Wirtualny CLU (`vclu`)
+## Wirtualny CLU (`vclu`)
 
 Implementacja wirtualnego CLU. Port z Javy [psobiech/opengr8on](https://github.com/psobiech/opengr8on) — **port to wczesna wersja, w dużej mierze nieprzetestowana**.
 
@@ -469,6 +473,10 @@ Without `--output` the result goes to stdout.
 ### Sister project
 
 [opengr8on](https://github.com/psobiech/opengr8on) — Java implementation of vCLU, more mature and better tested. If you need a stable virtual CLU, start there.
+
+[opengr8on-clu-esp32](https://github.com/psobiech/opengr8on-clu-esp32) — hardware CLU on ESP32-S3 (C port of this repo's vCLU and `src/tfbus`).
+
+[opengr8on-smartpanel-rp2350](https://github.com/psobiech/opengr8on-smartpanel-rp2350) — SMART_PANEL_FM_4 module emulator on an RP2350 touch-display board.
 
 ### Virtual CLU (`vclu`)
 

@@ -4,6 +4,7 @@ import { LuaScriptCommand } from './commands/LuaScriptCommand.js';
 import { SetIpCommand } from './commands/SetIpCommand.js';
 import { SetKeyCommand } from './commands/SetKeyCommand.js';
 import { ResetCommand } from './commands/ResetCommand.js';
+import { RefreshModulesCommand } from './commands/RefreshModulesCommand.js';
 import { StartTFTPdCommand } from './commands/StartTFTPdCommand.js';
 import { StopTFTPdCommand } from './commands/StopTFTPdCommand.js';
 import { GenerateMeasurementsCommand } from './commands/GenerateMeasurementsCommand.js';
@@ -87,7 +88,8 @@ export class CLUClient extends Client {
       newCipherKey.getSecretKey(),
       newCipherKey.getIV(),
     );
-    const decrypted = await this._request(command);
+    // Like OM: the CLU answers set_key under the NEW key.
+    const decrypted = await this._request(command, DEFAULT_TIMEOUT_MS, newCipherKey);
     if (!decrypted) return null;
     const resp = SetKeyCommand.responseFromBuffer(decrypted);
     if (!resp) return null;
@@ -105,6 +107,13 @@ export class CLUClient extends Client {
       if (alive) return true;
     }
     return false;
+  }
+
+  /** OM "Clear CLU" without clearing the project: TFBUS module discovery on the CLU. */
+  async refreshModules(timeoutMs = 30000): Promise<string | null> {
+    const decrypted = await this._request(RefreshModulesCommand.request(), timeoutMs);
+    if (!decrypted || !RefreshModulesCommand.responseMatches(decrypted)) return null;
+    return decrypted.toString('utf8');
   }
 
   async startTFTPdServer(): Promise<true | null> {

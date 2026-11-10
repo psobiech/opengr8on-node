@@ -19,11 +19,13 @@ const RESPONSE_CMD = 'resp_discovery_clu';
 
 export function hash(buf: Buffer): Buffer {
   const result = Buffer.alloc(buf.length);
-  let prev = (result[0] = (buf[0] ^ buf[buf.length - 1]) & 0xFF);
+  // OM / the CLU compute this on Java signed bytes (-5 % 13 === -5), not unsigned ones.
+  const s8 = (v: number) => (v << 24) >> 24;
+  let prev = s8((result[0] = (buf[0] ^ buf[buf.length - 1]) & 0xFF));
   for (let i = 1; i < buf.length; i++) {
     const a = prev % HASH_MOD_A;
-    const b = buf[i] % HASH_MOD_B;
-    prev = (result[i] = ((a + 1) * (b + 1)) & 0xFF);
+    const b = s8(buf[i]) % HASH_MOD_B;
+    prev = s8((result[i] = ((a + 1) * (b + 1)) & 0xFF));
   }
   return result;
 }

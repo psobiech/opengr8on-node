@@ -41,9 +41,54 @@ RedLedSwitchOn  aa <addr> 18 08 00 10 <crc>
 
 ---
 
+## Init Sequence (type 0x31)
+
+The CLU has **no panel-specific init of its own**. Every frame comes from an OM.LUA `set()` on one of the panel's objects and is sent in OM.LUA line order (pass 1). After OM.LUA has run, the CLU re-sends every feature in reverse order (pass 2), then the LED_CMD commit. The full sequence below is 275 frames per panel. It comes from `clu firmware/tfbus_capture_20261014_171505.log` (addr 0x12, every frame present). The 2026-11-09 cold-boot capture matches it for every frame type the sniffer could decode. Every frame gets an `AA 00 01 AB` ACK. No VERSION_QUERY is sent to these panels. With 3 panels the passes interleave: pass 1 for 18→19→20, then pass 2 for 18→19→20, with STATUS_POLLs in between (~3 s per panel).
+
+**Pass 1, OM.LUA order** (labels, icons and pages were empty in both captures):
+
+| OM.LUA source | Frames |
+|---|---|
+| PANEL_BUTTON b = 0..15 `set(1..6)` | class `0x17 [mask16 LE, 00]`, then DISPLAY_BLOCK `0x30 [b, 0a]`, `[b, 00]`, `[b, 01]` (20 data bytes, zero) |
+| PANEL `set(4..7)` GestureIcon Up/Down/Left/Right | `0x30 [00, sub, name…]`, sub up=`04` down=`05` left=`02` right=`03` |
+| PANEL `set(10..21)` | `0x31 [reg, value u16 LE]`, see table |
+| PANELSENSTEMP / PANELSENSLIGHT `set(1..4)` | class `0x16 [00 01 02 00] [00 0a 02 00] [01 01 0a 00] [01 0a 0a 00]` (verbatim; not the OM threshold values) |
+| PANEL_PAGE p = 1..4 `set(0, 1, 3..10)` | `0x31 [12, p, 00, 00]`, `[12, p, 01, 00]`, then for slot s = 1..4: `[12, p, 03, s]`, `[12, p, 04, s]` |
+
+| reg | PANEL feature | Observed data |
+|-----|---------------|---------------|
+| `0x01` | 10 ProximitySens | `05` |
+| `0x02` | 11 ProximityTimeout | `88 13` (5000) |
+| `0x0c` | 13 BuzzerValue | `01` |
+| `0x0d` | 15 GestureMode | `03` |
+| `0x0e` | 16 GestureSens | `02` |
+| `0x10` | 17 PageNr | `01` |
+| `0x11` | 18 PageDisplayMode | `00` |
+| `0x14` | 19 ButtonsLEDMode | `01` |
+| `0x15` | 20 PageControlMode | `01` |
+| `0x16` | 21 GestureDisplayMode | `01` |
+
+All values match `PAN7540:set(10..21, …)` in the real OM.LUA, in the same order. PANEL_PAGE fields: `00` = PageType, `01` = PageName, `03`/`04` = Object_s_Id/Name.
+
+**Pass 2, reverse order:**
+1. Pages p = 4→1: `[12 p 00 00]`, `[12 p 01 00]`, then for s = 1..4: `[12 p 04 s]`, `[12 p 03 s]`, `[1a b 02 00]` with b = (p-1)·4 + s-1 (the slot's PANEL_BUTTON), `[12 p 06 s]`.
+2. Sensors: `0x16 [01 0a 0a 00] [00 0a 02 00]`.
+3. Registers `01`, `02`.
+4. Icons right, down, left, up.
+5. Registers `0d 0e 0c 10 11 14 15 16`. **PageNr (`0x10`) is `00` here** (runtime current page?).
+6. Buttons 15→0, each `0x17` + 3× `0x30`. The LED_CMD `0x18 [00 00 02]` comes between button 0's `0x17` and its `0x30` blocks.
+
+**Real CLU artifact**: the gesture-icon DISPLAY_BLOCKs reuse one buffer without clearing it, so the padding contains leftovers of earlier names (e.g. `00 03 "right" 00… "up"`). The panel evidently ignores bytes after the terminating NUL.
+
+**Not decoded yet**: how non-empty button labels/icons and page content (type, name, slot objects) are encoded. Every frame above carried empty values. Capture a config with labels and a Buttons page to decode them.
+
+**Poll replies in this capture** (3 panels, 60 s): the panels answered STATUS_POLL with a bare ACK `AA 00 01 AB` almost every time, both before and after a full power cycle of the installation (CLU and modules) (~383 of 384 polls in steady state). The non-TLV 13-byte bitmask frame (`AA 00 0E 00 00 00 00 cf 00 70 01 00 00 00 87 01 …`) appeared only on the first polls after boot and about once more per minute. This contradicts the "never bare ACK" note below, so the panel firmware or its mode may differ between installations.
+
+---
+
 ## STATUS_POLL Response
 
-Unlike LED-type modules, SMART_PANEL_FM_4 **always returns a data frame** — never bare ACK (`AA 00 01 AB`). The minimum response is a 1-record TLV frame.
+Unlike LED-type modules, SMART_PANEL_FM_4 **always returns a data frame** — never bare ACK (`AA 00 01 AB`). *(Not true on every install. See "Poll replies in this capture" under Init Sequence.)* The minimum response is a 1-record TLV frame.
 
 Frame format:
 ```
@@ -187,7 +232,7 @@ aa 00 10 03  06 01 01 00  07 02 10 d7 00  08 02 10 12 00  75
 | Index | Feature | r/w | Default | Notes |
 |-------|---------|-----|---------|-------|
 | 0 | Value | r/o | — | 0 or 1 (button state) |
-| 1 | Mode | r/w | 0 | 0=Monostable, 1=Bistable, 2=Locked |
+| 1 | Mode | r/w | 0 | 0=Monostable, 1=Bistable, 2=Locked. Wire encoding not decoded (all captured buttons were monostable; `0x17 [mask16, 0]` byte 3 is a candidate). The ESP32 CLU applies it itself: bistable = each press toggles Value + OnSwitchOn/OnSwitchOff + OnChange, release ignored; locked = no events |
 | 2 | HoldDelay | r/w | 1000 ms | 100–5000 ms |
 | 3 | HoldInterval | r/w | 100 ms | 100–2000 ms |
 | 4 | Label | r/w | "" | string (max 15 chars) |
@@ -264,6 +309,11 @@ set/index methods: SetMode(set=1), SetHoldDelay(set=2), SetHoldInterval(set=3)
 | 28 | SetPrevPage | — |
 | 29 | Draw | — |
 
+Wire encoding (TFBUS_CMD `0x31`, sub-cmd byte), from the real CLU's PANEL method table
+(firmware.bin `0x1504c`, function pointers +0xc000): SwitchOnDisplay → `00`, ShowButtons →
+`03 00 00 00 00`, ClearScreen → `04`, PrintText → `0a [x y font text…]`, DisplayContent → `09`,
+SetBeep → `0f …`, Draw → `19`.
+
 set methods: SetGestureMode(15), SetGestureSens(16), SetPageDisplayMode(18), SetButtonsLEDMode(19), SetPageControlMode(20), SetGestureDisplayMode(21), SetProximitySens(10), SetProximityTimeout(11), SetBuzzerValue(13)
 
 #### Events
@@ -329,6 +379,11 @@ Correct sequence to update the display from CLU Lua:
 4. `execute(7)` — **DisplayContent** — flushes buffer to screen
 
 **DisplayContent (`execute(7)`) is the correct flush command**, not Draw (`execute(29)`). Draw does not render to screen on its own.
+
+**Exception — panel fwApiVer 4 (SN 0x0f05f77a, ESP32 CLU, 2026-11-10):** the opposite holds. ClearScreen →
+PrintText → DisplayContent (sub-cmd `09`) every 320 ms showed `! TIMEOUT !`; the same sequence ending
+with **Draw** (sub-cmd `19`) scrolls text correctly. The bytes on the bus match the real CLU in both
+cases, so this depends on the panel firmware: use Draw() on old panels.
 
 **All commands must be sent in a single CLU `execute` call** — separate MCP calls introduce enough latency to trigger the draw timeout between drawing and flush. Use the Lua `or 1` chaining trick (since execute returns nil, which is falsy):
 

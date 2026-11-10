@@ -4,8 +4,8 @@ export const MIN_ADDR  = 1 as const;
 export const MAX_ADDR  = 48 as const;
 
 export function buildFrame(dest: number, type: number, payload: Buffer = Buffer.alloc(0)): Buffer {
-  if (payload.length > 29) {
-    throw new RangeError(`TFBUS payload too long: ${payload.length} (max 29)`);
+  if (payload.length > 28) {
+    throw new RangeError(`TFBUS payload too long: ${payload.length} (max 28)`);
   }
   const buf = Buffer.allocUnsafe(3 + payload.length + 1);
   buf[0] = 0xAA;

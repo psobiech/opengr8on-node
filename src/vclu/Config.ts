@@ -123,5 +123,6 @@ export function writeDeviceConfig(aDriveDirectory: string, config: CLUDeviceConf
     hex(config.hwType),
     hex(config.hwVer),
   ];
-  writeFileSync(resolve(aDriveDirectory, 'config.txt'), lines.join('\r\n') + '\r\n', 'utf8');
+  // LF only (as on a real CLU): TFTP netascii adds the CR on the wire.
+  writeFileSync(resolve(aDriveDirectory, 'config.txt'), lines.join('\n') + '\n', 'utf8');
 }

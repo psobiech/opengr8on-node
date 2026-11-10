@@ -61,9 +61,9 @@ After `req_set_key` the CLU switches to the caller-supplied key for all subseque
 | `req` | `resp` | unicast/broadcast | Execute Lua expression in CLU runtime |
 | `req_gen_measurements` | `meas_file_download` | unicast | Flush and expose meas.bin via TFTP |
 | `req_check_alive` | `resp_check_alive` | unicast | Low-level alive check (non-Lua) |
-| `req_refresh_modules` | `resp_refresh_modules` | unicast | Reload module list |
+| `req_refresh_modules` | `resp_refresh_modules` | unicast | Rescan the TFBUS and rewrite `a:\CONFIG.JSON` (`tfbusDevices`). Sent by OM's "Clear CLU" before it downloads CONFIG.JSON; OM waits 30 s and only checks the response prefix |
 | `req_refresh_config` | `resp_refresh_config` | unicast | Reload CLU config |
-| `req_diagnostic_pack` | `resp_diagnostic_pack` | unicast | JSON CLU + module diagnostics |
+| `req_diagnostic_refresh:<ip>:<session>` | `resp_diagnostic_refresh:<session>:OK` (or `ERROR:1` / `ERROR:2`) | unicast | CLU writes `m:\DIAGNOSTIC_PACK.JSON`, OM fetches it over TFTP |
 | `req_start_fw_upgrade` | `resp_fw_upgrade_status` | unicast | Begin OTA firmware upgrade |
 
 ---

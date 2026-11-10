@@ -1,13 +1,7 @@
 import { createInterface } from 'node:readline';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve } from 'node:path';
 
-// @ts-ignore - JS files
-import { CLUClient } from '../CLUClient.js';
-// @ts-ignore
-import { CLUDevice } from '../device/CLUDevice.js';
-// @ts-ignore
-import { CipherKey } from '../CipherKey.js';
+import { readProjectClus, projectCluClient } from './project.js';
 // @ts-ignore
 import { readAllObjects, readTFBusModules } from '../parsers/omp/OmpReader.js';
 import type { TFBusModuleInfo } from '../parsers/omp/OmpReader.js';
@@ -154,31 +148,6 @@ export async function runCluRepl(options: CluReplOptions): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   const allObjects = readAllObjects(ompFile) as unknown as Map<unknown, RawObj>;
 
-  // ─── Project cipher key ────────────────────────────────────────────────────
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let projectCipherKey: any = null;
-  try {
-    const keysPath = resolve(dirname(ompFile), 'keys.json');
-    const keys = JSON.parse(readFileSync(keysPath, 'utf8')) as { key?: string; iv?: string };
-    if (keys.key && keys.iv) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      projectCipherKey = new CipherKey(
-        Buffer.from(keys.key, 'base64'),
-        Buffer.from(keys.iv, 'base64'),
-      );
-    }
-  } catch { /* no keys.json */ }
-
-  if (!projectCipherKey) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      const { readProjectCipherKey } = await import('../parsers/omp/OmpReader.js');
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      projectCipherKey = readProjectCipherKey(ompFile);
-    } catch { /* no project key */ }
-  }
-
   // ─── Group device objects by CLU (friendly name → ObjectEntry) ────────────
 
   const devicesByClu = new Map<string, Map<string, ObjectEntry>>();
@@ -209,45 +178,13 @@ export async function runCluRepl(options: CluReplOptions): Promise<void> {
 
   const cluByName = new Map<string, CluEntry>();
 
-  for (const obj of allObjects.values()) {
-    const ip = textOf(obj['ipAddress']);
-    if (!ip) continue;
-
-    const name   = textOf(obj['name']);
-    const serial = textOf(obj['serialNumber']);
-    if (!name) continue;
-    if (cluByName.has(name.toLowerCase())) continue;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let cipherKey: any;
-    if (obj['cipherKeyType'] === 'PROJECT_KEY' && projectCipherKey) {
-      cipherKey = projectCipherKey;
-    } else {
-      const ivStr = textOf(obj['iv']);
-      const pkStr = textOf(obj['privateKey']);
-      if (ivStr && pkStr) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-        cipherKey = CipherKey.getInitialCipherKey(
-          Buffer.from(ivStr, 'base64'),
-          Buffer.from(pkStr, 'base64'),
-        );
-      } else {
-        cipherKey = projectCipherKey;
-      }
-    }
-    if (!cipherKey) continue;
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    const device = new CLUDevice({ address: ip, port: cluPort, serialNumber: parseInt(serial, 16) });
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    const client = new CLUClient(localAddress, device, cipherKey);
-
-    cluByName.set(name.toLowerCase(), {
-      name,
-      serial,
-      ipAddress: ip,
-      client,
-      objects: devicesByClu.get(name) ?? new Map(),
+  for (const clu of readProjectClus(ompFile)) {
+    cluByName.set(clu.name.toLowerCase(), {
+      name: clu.name,
+      serial: clu.serial,
+      ipAddress: clu.ipAddress,
+      client: projectCluClient(clu, localAddress, cluPort),
+      objects: devicesByClu.get(clu.name) ?? new Map(),
     });
   }
 

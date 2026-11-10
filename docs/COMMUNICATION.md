@@ -151,7 +151,7 @@ TFBUS 2.0 is a half-duplex RS485 master/slave protocol. The CLU is always master
  ┌──────┬───────────┬────────────┬─────────────────┬────────┐
  │ 0xAA │ dest_addr │ frame_type │    payload      │  XOR   │
  └──────┴───────────┴────────────┴─────────────────┴────────┘
-   start   RS485 addr  command ID   0–29 bytes       checksum
+   start   RS485 addr  command ID   0–28 bytes       checksum
 
  Module → CLU response (dest_addr = 0x00):
 

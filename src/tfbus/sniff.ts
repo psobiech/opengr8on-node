@@ -4,11 +4,11 @@ import type { TFBusTransport } from './transport/SerialTransport.js';
 
 export interface SniffEvent {
   ts: number;
-  dir: 'tx' | 'rx';
+  dir: 'tx' | 'rx' | 'junk';
   hex: string;
   addr: number;
   type: number | null;
-  event: 'tx' | 'status' | 'version' | 'ack' | 'response';
+  event: 'tx' | 'status' | 'version' | 'ack' | 'response' | 'junk';
   data: object | null;
 }
 
@@ -120,4 +120,31 @@ function filterIdle(events: SniffEvent[]): SniffEvent[] {
     }
     return true;
   });
+}
+
+// One "ms dir hex" line per frame, ms relative to the first event.
+export function formatCompact(events: SniffEvent[]): string {
+  const t0 = events[0]?.ts ?? 0;
+  return events.map(e => `${e.ts - t0} ${e.dir} ${e.hex}`).join('\n');
+}
+
+// Collects discarded bytes as 'junk' events (pass collector.onSkip to SerialTransport). Bytes
+// arriving within 5 ms of each other are merged into one event.
+export function junkCollector(): { onSkip: (bytes: Buffer) => void; events: SniffEvent[] } {
+  const events: SniffEvent[] = [];
+  const onSkip = (bytes: Buffer) => {
+    const now = Date.now();
+    const last = events[events.length - 1];
+    if (last && now - last.ts <= 5) {
+      last.hex += bytes.toString('hex');
+      return;
+    }
+    events.push({ ts: now, dir: 'junk', hex: bytes.toString('hex'), addr: -1, type: null, event: 'junk', data: null });
+  };
+  return { onSkip, events };
+}
+
+// Merge two ts-sorted event lists.
+export function mergeEvents(a: SniffEvent[], b: SniffEvent[]): SniffEvent[] {
+  return [...a, ...b].sort((x, y) => x.ts - y.ts);
 }

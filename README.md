@@ -165,6 +165,23 @@ clu> exec MyCLU checkAlive()
 
 ---
 
+### Narzędzie `clu-cli`
+
+Jednorazowe polecenia CLU do skryptów (np. restart zsynchronizowany ze snifferem magistrali).
+
+```
+clu-cli --omp-file ./runtime/project.omp --local-address 192.168.1.100 [--clu-port 1234] <polecenie>
+
+list                                   — lista CLU z projektu
+alive <CLU>                            — checkAlive()
+reset <CLU> [--delay ms] [--wait ms]   — req_reset i czekanie, aż CLU znowu odpowie
+fetch <CLU> <plik>… [--out katalog]    — pobranie plików przez TFTP (TFTPd włączany i wyłączany automatycznie)
+```
+
+`<CLU>` to nazwa lub numer seryjny (hex) z projektu. Przykład: `clu-cli … fetch CLU_2 'a:\OM.LUA' 'a:\USER.LUA' --out ./dl`. Brakujący plik prawdziwe CLU zgłasza jako `TFTP error 0: TFTP Server Failure`.
+
+---
+
 ### Serwery MCP (`clu-mcp`, `tfbus-mcp`)
 
 Serwery MCP (Model Context Protocol) do integracji z narzędziami AI (np. Claude Code).
@@ -398,6 +415,23 @@ clu> MyCLU.RELAY_KITCHEN.Switch()
 clu> exec MyCLU checkAlive()
   => 0D123456
 ```
+
+---
+
+### `clu-cli`
+
+One-shot CLU commands for scripts (e.g. a restart timed against a bus sniffer).
+
+```
+clu-cli --omp-file ./runtime/project.omp --local-address 192.168.1.100 [--clu-port 1234] <command>
+
+list                                   — CLUs in the project
+alive <CLU>                            — checkAlive()
+reset <CLU> [--delay ms] [--wait ms]   — req_reset, then wait until the CLU answers again
+fetch <CLU> <file>… [--out dir]        — TFTP download (TFTPd is started and stopped automatically)
+```
+
+`<CLU>` is the name or serial hex from the project. Example: `clu-cli … fetch CLU_2 'a:\OM.LUA' 'a:\USER.LUA' --out ./dl`. A real CLU reports a missing file as `TFTP error 0: TFTP Server Failure`.
 
 ---
 

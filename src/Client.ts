@@ -82,6 +82,7 @@ export class Client {
     privateKeys: Record<number, Buffer> = {},
     timeoutMs = DEFAULT_TIMEOUT_MS,
     limit = Infinity,
+    resendIntervalMs = 1000,
   ): Promise<CLUDevice[]> {
     await this._ensureOpen();
 
@@ -95,26 +96,38 @@ export class Client {
     const requestCipherKey = CipherKey.DEFAULT_BROADCAST;
     const responseCipherKey = CipherKey.DEFAULT_BROADCAST.withIV(projectCipherKey.getIV());
 
-    await this._sendEncrypted(requestCipherKey, command.toBuffer(), this.broadcastAddress);
+    // UDP gives no delivery feedback: on a lossy link either the broadcast or the reply may be
+    // lost. Re-broadcast the same request every resendIntervalMs until the deadline; CLUs answer
+    // idempotently, so replies are deduplicated by serial number.
+    const request = command.toBuffer();
+    const send = () => this._sendEncrypted(requestCipherKey, request, this.broadcastAddress).catch(() => {});
+    await this._sendEncrypted(requestCipherKey, request, this.broadcastAddress);
+    const resend = resendIntervalMs > 0 ? setInterval(send, resendIntervalMs) : null;
 
-    const devices: CLUDevice[] = [];
+    const devices = new Map<number | string, CLUDevice>();
     const deadline = Date.now() + timeoutMs;
 
-    while (Date.now() < deadline && devices.length < limit) {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) break;
+    try {
+      while (Date.now() < deadline && devices.size < limit) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
 
-      const raw = await this._receiveRaw(remaining);
-      if (!raw) break;
+        const raw = await this._receiveRaw(remaining);
+        if (!raw) break;
 
-      const decrypted = responseCipherKey.decrypt(raw.buffer);
-      if (!decrypted) continue;
+        const decrypted = responseCipherKey.decrypt(raw.buffer);
+        if (!decrypted) continue;
 
-      const device = DiscoverCLUsCommand.parse(randomBuf, raw.address, decrypted, privateKeys);
-      if (device) devices.push(device);
+        const device = DiscoverCLUsCommand.parse(randomBuf, raw.address, decrypted, privateKeys);
+        if (!device) continue;
+        const key = device.serialNumber ?? raw.address;
+        if (!devices.has(key)) devices.set(key, device);
+      }
+    } finally {
+      if (resend) clearInterval(resend);
     }
 
-    return devices;
+    return [...devices.values()];
   }
 
   close(): void {

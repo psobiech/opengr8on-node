@@ -33,7 +33,7 @@ Byte[2] meaning differs by direction:
 Byte [0]      = 0xAA           start byte (always)
 Byte [1]      = dest_addr      destination RS485 address (1–48, 0xFF broadcast)
 Byte [2]      = frame_type     command ID — see frame type table
-Byte [3..N-1] = payload        0–29 bytes
+Byte [3..N-1] = payload        0–28 bytes (frame ≤ 32)
 Byte [N]      = XOR_crc        XOR of bytes [0..N-1]
 ```
 No explicit length field. Receiver uses a type→length table for known frame types; falls back to CRC scan for unknown types. Exception: MODULE_CMD (0xF0) carries an explicit `plen` byte at byte[3] that encodes payload length (plen includes itself).
@@ -47,6 +47,8 @@ Byte [3..N-1] = payload        TLV records
 Byte [N]      = XOR_crc        XOR of bytes [0..N-1]
 ```
 Explicit length field at byte[2] — no CRC scan needed.
+
+**Max frame size**: 32 bytes in both directions (command payload ≤ 28; response `payload_len` ≤ 29, i.e. ≤ 28 payload bytes + XOR). Matches the real CLU firmware: its TX builder rejects payload ≥ 0x1D and its RX parser drops frames ≥ 0x21 bytes.
 
 **Address space**: modules use addresses 1–48; `0xFF` = broadcast; `0x00` = CLU's own RS485 address.
 
@@ -69,8 +71,9 @@ Frame types fall into three groups:
 | `0x02` | ADDR_ASSIGN      | 9 | 0xFF | `serial_number(u32 LE), channel(u8)` |
 | `0x04` | STATUS_POLL      | 4 | unicast | none |
 | `0x07` | RESET            | 4 | any | none |
+| `0x08` | DISCOVER         | 4 | 0xFF | none; an unaddressed module replies `SN(u32 LE) hwType fwType fwApiVer`, a plain ACK / silence = no more. See [Discovering new modules](#discovering-new-modules) |
 | `0x09` | ADDR_CONFIRM     | 5 | unicast | `{0x02}` |
-| `0x0A` | ???              | 4 | any | none |
+| `0x0A` | DEVICE_SEARCH (sub-device enumeration, likely 1-Wire) | 4 | unicast | none; reply = device record (8-byte ROM-style ID), all-zero ID = no (more) devices. See [TFBUS_ANALOG_DIN.md](TFBUS_ANALOG_DIN.md#query-0x0a--sub-device-search-decompiled) |
 | `0x0B` | FORCE_GET_STATUS | 4 | 0xFF | none |
 | `0x10`–`0x28` | CLASS_UPDATE     | variable | unicast | class-specific; see Class-Specific section |
 | `0x2A` | SEEK             | 4 | 0xFF | none |
@@ -175,6 +178,8 @@ Parser detects frame length by CRC-scanning lengths 5–32.
 **BUZZER_BEEP parameter ranges**: freq 30–5700 Hz, duration 1–2000 ms, volume 0–16 (u16 LE), reserved=0.
 
 **PRINT_TEXT**: text field is exactly 16 bytes. Always follow with DRAW (0x19) to commit display.
+
+**SMART_PANEL_FM_4 init**: during boot the CLU sends SMART_PANEL_FM_4 0x31 frames whose `cmd` bytes (`0x01 0x02 0x0c 0x0d 0x0e 0x10 0x11 0x12 0x14 0x15 0x16 0x1a`) are panel config registers, not the commands above. `01 05` is ProximitySens=5, not RESP_CHECK_ALIVE. See [TFBUS_SMART_PANEL_FM_4.md](TFBUS_SMART_PANEL_FM_4.md#init-sequence-type-0x31).
 
 ---
 
@@ -374,11 +379,137 @@ The CLU knows all module serial numbers from its configuration. Discovery assign
 
 Only the module whose serial number matches the ADDR_ASSIGN payload accepts the address. SMART_PANEL_FM_4 modules (SN prefix `0x0f05`) do not respond to VERSION_QUERY.
 
+### Discovering new modules
+
+The CLU learns the serial numbers of modules that are **not** in its configuration with a
+broadcast DISCOVER (`AA FF 08 5D`). Decompiled real CLU firmware: when the last frame sent was
+type `0x08`, `tfbus_rx_dispatcher` hands the reply payload to `parse_rx_discover_msg`, which reads
+`SN(u32 LE)` plus three bytes into module fields `+0x10 +0x11 +0x12` and registers the module in a
+free slot (or updates the slot with that SN). An empty reply (`AA 00 01 AB`) is ignored. `+0x10`
+is the hwType and `+0x12` the fwApiVer (`hw_type_check_type3`: hwType 3 with `+0x12 < 5` is not
+VERSION_QUERY'd), so the payload is `SN hwType fwType fwApiVer`. A newly registered module is
+inactive, and the poll loop sends it ADDR_ASSIGN (`send_status_poll`).
+
+```
+CLU: AA FF 08 5D
+mod: AA 00 08 79 7B 05 0F 03 03 04 AE      SN 0x0f057b79, hwType 3, fwType 3, fwApiVer 4
+CLU: AA FF 02 79 7B 05 0F 04 ..            address it, then DISCOVER again until no reply
+```
+
+**Module refresh (`req_refresh_modules`, OM "Clear CLU").** Captured on a real CLU with 26 modules
+(opengr8on-esp32-clu: `test/host/fixtures/capture_refresh_modules_clu2.txt`):
+
+```
+AA FF 07 52                                RESET broadcast, then ~1.2 s with no valid frames (junk only)
+AA FF 02 SN[4 LE] CH   (x23, 3 ms apart)   ADDR_ASSIGN in OM.LUA order, each ACKed. No SEEK
+AA FF 08 5D                                DISCOVER
+  <- AA 00 08 8B 65 27 10 1C 02 01 ..      SN 0x1027658b, hwType 0x1c, fwType 2, fwApiVer 1
+AA FF 02 ..  (CH 0x0b, 0x19)               ~870 ms later: modules left out of the first pass
+AA dd F9                                   VERSION_QUERY per module (after ~1.7 s and the first polls)
+```
+
+This is the only capture of a real module's DISCOVER reply: it matches `SN hwType fwType fwApiVer`.
+Unexplained so far: the first pass left out CH 3, 0x0b and 0x19, and CH 3 was never assigned but
+kept answering. VERSION_QUERY skipped CH 1, 0x16 and 0x17. The CLU sent no module init afterwards.
+After the refresh, the real CLU (5.13.x) sent no `resp_refresh_modules` and stopped answering UDP
+until it was rebooted. This happened twice.
+
+The ESP32 CLU uses the same order on `req_refresh_modules` (RESET, ADDR_ASSIGN by SN, DISCOVER loop
+for the leftovers, retry, VERSION_QUERY). At boot and reload it keeps RESET, SEEK, DISCOVER loop,
+then ADDR_ASSIGN. It re-runs the driver init after both. The RP2350 panel emulator answers DISCOVER.
+
+**config.txt / CONFIG.JSON.** OM 1.12.1 imports bus modules from **`a:\config.txt`**
+(`utils/b/b.java`): after the 7 CLU header lines, one line per module,
+`sn:hwType:fwType:fwApiVer` in hex, e.g. `0f057b7d:03:03:04` (real CLU file). It never reads
+CONFIG.JSON for this. `a:\CONFIG.JSON` carries the same list in `tfbusDevices`. Entry fields match the VERSION_QUERY reply exactly (real CLU file):
+`fwVer` = `"fwApiVer.verA.verB"`, `hwVer` = the optional 4th byte (default 1), modules that are
+not queried get `"0.0.0"`:
+
+```json
+{"sn":252017533,"hwType":3,"hwVer":1,"fwType":3,"fwApiVer":4,"fwVer":"0.0.0","status":"OK"}
+{"sn":461004209,"hwType":25,"hwVer":2,"fwType":2,"fwApiVer":1,"fwVer":"1.2.13","status":"OK"}
+```
+
 ### VERSION_QUERY Response Format
 
-3–4 bytes: `[hwType, hwVer, fwApiVer]` or `[hwType, 0x00, 0x00, 0x01]`.
+3–4 bytes: `[fwApiVer, verA, verB]` or `[fwApiVer, verA, verB, 0x01]`.
 
-`hwType` identifies the hardware family (see Module Types table). `hwVer` is a hardware revision byte. `fwApiVer` is the firmware API version used with `fwType` (from SEEK_RESPONSE cmd 0x08) to select the module interface definition.
+Byte 0 is the module's **fwApiVer**, not hwType. Confirmed against the real OM.LUA, where each module line reads `OBJECT:new(2, SN, hwType, "sn") -- serial fwType fwApiVer`:
+
+| Module (OM.LUA hwType) | OM.LUA `fwType fwApiVer` | VERSION_QUERY reply |
+|---|---|---|
+| ROLLER_SH_DIN (`0x17`) | `02 01` | `01 01 0b` |
+| IO_MODULE_DIN_8 (`0x1e`) | `02 02` | `02 00 00` |
+| RELAY_DIN_4 (`0x15`) | `02 02` | `02 00 00 01` |
+| TOUCH_PANEL_FM_4 (`0x1c`) | `02 01` | `01 01 05` |
+| ROLLER_SH_DIN_3 (`0x2a`) | `02 03` | `03 02 04` |
+| SMART_PANEL_FM_4 (`0x03`) | `03 04` | *(not queried)* |
+| SMART_PANEL_FM_4 (`0x03`) | `03 06` | `06 03 07` |
+| ANALOG_DIN (`0x19`) | `02 01` | `01 02 0d 02` |
+| DIMMER_MOSFET_DIN (`0x1a`) | `02 02` | `02 02 04 03` |
+| LED_RGBW_DIN (`0x18`) | `02 01` | `01 04 08` |
+
+The CLU skips VERSION_QUERY only for SMART_PANELs with fwApiVer 4. A panel with fwApiVer 6 on the second CLU was queried.
+
+`verA verB` are probably the module firmware version (e.g. `02 04` = 2.4). This is unconfirmed, and `00 00` shows up on IO/RELAY modules. The trailing `0x01` appears only on RELAY_DIN_4. The real hwType never appears in the reply: the CLU takes it from its configuration.
+
+### Observed Cold Boot (real CLU, 23 modules)
+
+Captured passively with `tfbus_sniff` during a **full installation power cycle**: the real CLU and all modules restarted together. A CLU-only restart may behave differently and has not been captured yet. Times are relative to the CLU's first frame.
+
+| t (ms) | Phase | Frames |
+|---|---|---|
+| 0 | ADDR_ASSIGN | 15× `AA FF 02 SN[4 LE] CH` for CH = 9…23, every ~8–14 ms, each ACKed `AA 00 01 AB` |
+| +145 | First STATUS_POLL cycle | addr 1…23 in order; modules answer with full status |
+| +330 | MODULE_CMD (0xF0) init | per-module init sequences, addr 1 → 23 (see module docs) |
+| +510 | VERSION_QUERY | `AA dd F9` to addr 1–17 and 21–23; **skips SMART_PANEL_FM_4** (18–20). Interleaved with 0xF0 init |
+| +1910 | SMART_PANEL init | 0x31 register writes, then `0x18 [00 00 02]` per panel; ~3 s per panel, the 3 panels overlap (see [TFBUS_SMART_PANEL_FM_4.md](TFBUS_SMART_PANEL_FM_4.md#init-sequence-type-0x31)) |
+| +6410 | Steady state | only STATUS_POLL, one cycle over all 23 modules every ~145 ms, polls interleaved with config writes |
+
+**Address = declaration order.** The CLU gives addresses 1, 2, 3, … to the TFBus modules (`OBJECT:new(2, …)`) in the order they appear in OM.LUA. Z-Wave entries (hwType `0x008500030011`) are skipped. 14 of 15 assigned serials matched OM.LUA at the expected index. The one miss (addr 23) is a module added after that OM.LUA was generated. The addr 1–8 module types, inferred from their 0xF0 init and status replies, also match the order.
+
+**Init is driven by OM.LUA.** Apart from addressing, polling and VERSION_QUERY, the CLU sends no module init of its own. Each 0xF0/0x31/class frame is caused by a `:set()` line in OM.LUA and goes out in OM.LUA line order. Example: `ROL7957:set(9, 30000)` → FEATURE_PARAM `b8 0b` (3000 × 10 ms). The SMART_PANEL also gets a second pass in reverse order after OM.LUA ([details](TFBUS_SMART_PANEL_FM_4.md#init-sequence-type-0x31)).
+
+**Sniffer limitation (fixed 2026-11-09):** the `tfbus_sniff` RX parser used to have no length for class frames `0x16`, `0x17` or `0x30` and dropped them silently, so the cold-boot capture above lacks them. The parser now CRC-scans unknown types.
+
+**Soft restart (CLU only, after sending new scripts; modules stay powered).** Captured with the fixed sniffer:
+- Again **no RESET or SEEK**. Polling stops for ~2.9 s, then ADDR_ASSIGN goes out for **CH 7–23** (the cold boot assigned CH 9–23), then the same init as the cold boot.
+- All three SMART_PANELs received exactly the 275-frame sequence from the October capture, in identical order.
+- Modules that were not reassigned kept answering at their addresses throughout.
+
+In the October capture (`tfbus_capture_20261014_171505.log`, different tool, unknown trigger) the CLU sent RESET → 2.0 s → SEEK → ADDR_ASSIGN for **all** CH 1–23. A second soft restart, captured unfiltered with discarded-byte reporting (`tfbus_sniff compact:true junk:true`), confirmed this:
+- Polling stops mid-cycle (right after polling addr 3).
+- The bus is then **completely silent for 2.9 s**: zero bytes, valid or garbled, in the whole 180 s capture.
+- Then ADDR_ASSIGN goes out for exactly CH 7–23 again.
+
+So on a **soft restart**, firmware 5.13.8 really sends no RESET or SEEK and reassigns only the tail of the module list (the CLU kept running, so it knows the modules hold their addresses). The cold boot showed the same pattern, but that capture had no discarded-byte reporting, so garbled power-on frames are not ruled out. A second full power cycle, captured with `junk:true`, shows the same pattern:
+- After the power-on silence, the first and only byte-level event is a **garbled ACK** `aa 00 01 db`.
+- 76 ms later comes ADDR_ASSIGN for CH 8–23 only. None of these frames was preceded by RESET or SEEK.
+- The garbled ACK looks like several modules answering a broadcast (SEEK) at once.
+- The gap before CH 8 is about the time CH 1–7 would take, but none of them was seen and modules 1–7 sent no ACKs.
+
+The number of skipped channels varies per boot (6–8).
+
+**A second, independent CLU** (26 modules) was power-cycled and captured with `junk:true`:
+- No RESET or SEEK.
+- ADDR_ASSIGN for **CH 5–26** only, starting right after the power-on silence.
+- Then VERSION_QUERY and the OM.LUA-driven init.
+- It also sent a so far undocumented **type `0x0A`** frame: `AA 02 0A A2`, answered with `AA 00 0B 00 03 00 00 00 00 00 00 00 00 A2` (10-byte payload). Right after it came MODULE_CMD SET_RAMP_TIME / DIMMER_SET_VALUE to addr 1.
+
+A plain UDP **`req_reset`** to the same CLU (no script upload) produced a bus trace identical to its power cycle:
+- Polling continued ~1.6 s after the request, then the bus was silent for 2.7 s.
+- ADDR_ASSIGN for the same CH 5–26 followed, then one `0x0A`.
+- Every init frame count matched the power-cycle capture.
+- `checkAlive()` answered 4.8 s after `req_reset`.
+
+On a given CLU the skipped range is stable (CLU_2: CH 1–4 three times; CLU_1: the first 6–8 channels, varying per boot).
+
+So partial reassignment without RESET/SEEK is normal behaviour of the real CLU firmware on any (re)start, whether power cycle, script upload or `req_reset`. It is not a quirk of one installation. The full RESET → SEEK → all-channels sequence in the October capture needs a special trigger, possibly a changed module list or a first start with new modules.
+
+**Open points from this capture:**
+- No RESET (`AA FF 07`) or SEEK (`AA FF 2A`) frame was seen. The bus was silent for 3.9 s, and the first CLU frame was ADDR_ASSIGN for CH 9.
+- **CH 1–8 were never assigned**, yet modules 1–8 answered polls at their usual addresses only ~145 ms after the first frame, even though they had been power-cycled too. Either those modules keep their address in non-volatile memory, or their ADDR_ASSIGN frames (plus any RESET/SEEK) were sent while the bus or sniffer was still settling and were lost. A raw-byte capture, or a capture that starts with the sniffer already running and only the modules power-cycled, is needed to tell which.
+- To compare: capture a CLU-only restart (modules stay powered) and a modules-only restart.
 
 ### State Machine
 

@@ -31,6 +31,11 @@ describe('DiscoverCLUsCommand', () => {
       assert.equal(result[0], (0x0F ^ 0xF0) & 0xFF);
     });
 
+    it('matches OM / Java signed-byte hash for bytes >= 0x80', () => {
+      const input = Buffer.from(Array.from({ length: 30 }, (_, i) => (i * 37 + 200) & 0xFF));
+      assert.equal(hash(input).toString('hex'), '310be4eebc1864743d1e0a0b941ec918482808ca07c063512031df18c42a');
+    });
+
     it('is deterministic', () => {
       const input = Buffer.alloc(30, 0x42);
       assert.ok(hash(input).equals(hash(input)));

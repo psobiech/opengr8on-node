@@ -344,7 +344,7 @@ export class Server {
 
   private _onSetKey(
     cmd: { key: Buffer; iv: Buffer },
-    oldKey: InstanceType<typeof CipherKey>,
+    _oldKey: InstanceType<typeof CipherKey>,
   ) {
     const newKey = new CipherKey(cmd.key, cmd.iv);
     this._temporaryIV = null;
@@ -352,7 +352,8 @@ export class Server {
     this._unicastKeys = [newKey];
     this._broadcastKeys = [CipherKey.DEFAULT_BROADCAST, newKey];
     this._persistKeys();
-    return { key: oldKey, cmd: SetKeyCommand.response() };
+    // OM decrypts the set_key answer with the NEW key (com.grenton.om.commands.clu.G).
+    return { key: newKey, cmd: SetKeyCommand.response() };
   }
 
   private _onReset() {

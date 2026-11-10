@@ -33,7 +33,7 @@ Znaczenie bajtu[2] różni się w zależności od kierunku:
 Bajt [0]      = 0xAA           bajt startowy (zawsze)
 Bajt [1]      = dest_addr      docelowy adres RS485 (1–48, 0xFF broadcast)
 Bajt [2]      = frame_type     ID komendy — patrz tabela typów ramek
-Bajt [3..N-1] = payload        0–29 bajtów
+Bajt [3..N-1] = payload        0–28 bajtów (ramka ≤ 32)
 Bajt [N]      = XOR_crc        XOR bajtów [0..N-1]
 ```
 Brak jawnego pola długości. Odbiorca używa tabeli typ→długość dla znanych typów ramek; dla nieznanych typów skanuje CRC. Wyjątek: MODULE_CMD (0xF0) zawiera jawny bajt `plen` na pozycji [3] kodujący długość ładunku (plen wlicza siebie).
@@ -47,6 +47,8 @@ Bajt [3..N-1] = payload        rekordy TLV
 Bajt [N]      = XOR_crc        XOR bajtów [0..N-1]
 ```
 Jawne pole długości na bajcie[2] — skanowanie CRC nie jest potrzebne.
+
+**Maksymalny rozmiar ramki**: 32 bajty w obu kierunkach (payload komendy ≤ 28; `payload_len` odpowiedzi ≤ 29, tj. ≤ 28 bajtów payloadu + XOR). Zgodne z firmware prawdziwego CLU: budowanie ramki TX odrzuca payload ≥ 0x1D, parser RX odrzuca ramki ≥ 0x21 bajtów.
 
 **Przestrzeń adresowa**: moduły używają adresów 1–48; `0xFF` = broadcast; `0x00` = własny adres RS485 CLU.
 
@@ -70,7 +72,7 @@ Typy ramek dzielą się na trzy grupy:
 | `0x04` | STATUS_POLL      | 4 | unicast | brak |
 | `0x07` | RESET            | 4 | dowolny | brak |
 | `0x09` | ADDR_CONFIRM     | 5 | unicast | `{0x02}` |
-| `0x0A` | ???              | 4 | dowolny | brak |
+| `0x0A` | DEVICE_SEARCH (wyliczanie podurządzeń, prawdopodobnie 1-Wire) | 4 | unicast | brak; odpowiedź = rekord urządzenia (8-bajtowy identyfikator w stylu ROM), identyfikator z samych zer = brak (kolejnych) urządzeń. Patrz [TFBUS_ANALOG_DIN.md](TFBUS_ANALOG_DIN.md#query-0x0a--sub-device-search-decompiled) |
 | `0x0B` | FORCE_GET_STATUS | 4 | 0xFF | brak |
 | `0x10`–`0x28` | CLASS_UPDATE     | zmienny | unicast | specyficzny dla klasy; patrz sekcja Klasy |
 | `0x2A` | SEEK             | 4 | 0xFF | brak |
@@ -202,6 +204,8 @@ Parser wykrywa długość ramki przez skanowanie CRC dla długości 5–32.
 **Zakresy parametrów BUZZER_BEEP**: freq 30–5700 Hz, czas trwania 1–2000 ms, głośność 0–16 (u16 LE), reserved=0.
 
 **PRINT_TEXT**: pole tekstu ma dokładnie 16 bajtów. Po PRINT_TEXT zawsze należy wysłać DRAW (0x19) aby zatwierdzić wyświetlacz.
+
+**Inicjalizacja SMART_PANEL_FM_4**: podczas startu CLU wysyła do SMART_PANEL_FM_4 ramki 0x31, w których bajty `cmd` (`0x01 0x02 0x0c 0x0d 0x0e 0x10 0x11 0x12 0x14 0x15 0x16 0x1a`) są rejestrami konfiguracji panelu, a nie komendami z tabeli powyżej. `01 05` oznacza ProximitySens=5, a nie RESP_CHECK_ALIVE. Patrz [TFBUS_SMART_PANEL_FM_4.md](TFBUS_SMART_PANEL_FM_4.md#init-sequence-type-0x31).
 
 ---
 
@@ -457,9 +461,84 @@ Tylko moduł, którego numer seryjny pasuje do ładunku ADDR_ASSIGN, przyjmuje a
 
 ### Format odpowiedzi VERSION_QUERY
 
-3–4 bajty: `[hwType, hwVer, fwApiVer]` lub `[hwType, 0x00, 0x00, 0x01]`.
+3–4 bajty: `[fwApiVer, verA, verB]` lub `[fwApiVer, verA, verB, 0x01]`.
 
-`hwType` identyfikuje rodzinę sprzętową (patrz tabela typów modułów). `hwVer` to bajt rewizji sprzętu. `fwApiVer` to wersja API firmware, używana razem z `fwType` (z SEEK_RESPONSE cmd 0x08) do wyboru definicji interfejsu modułu.
+Bajt 0 to **fwApiVer** modułu, a nie hwType. Potwierdzone z prawdziwym OM.LUA, gdzie linia modułu ma postać `OBJECT:new(2, SN, hwType, "sn") -- serial fwType fwApiVer`:
+
+| Moduł (hwType z OM.LUA) | `fwType fwApiVer` z OM.LUA | Odpowiedź VERSION_QUERY |
+|---|---|---|
+| ROLLER_SH_DIN (`0x17`) | `02 01` | `01 01 0b` |
+| IO_MODULE_DIN_8 (`0x1e`) | `02 02` | `02 00 00` |
+| RELAY_DIN_4 (`0x15`) | `02 02` | `02 00 00 01` |
+| TOUCH_PANEL_FM_4 (`0x1c`) | `02 01` | `01 01 05` |
+| ROLLER_SH_DIN_3 (`0x2a`) | `02 03` | `03 02 04` |
+| SMART_PANEL_FM_4 (`0x03`) | `03 04` | *(nie odpytywany)* |
+| SMART_PANEL_FM_4 (`0x03`) | `03 06` | `06 03 07` |
+| ANALOG_DIN (`0x19`) | `02 01` | `01 02 0d 02` |
+| DIMMER_MOSFET_DIN (`0x1a`) | `02 02` | `02 02 04 03` |
+| LED_RGBW_DIN (`0x18`) | `02 01` | `01 04 08` |
+
+CLU pomija VERSION_QUERY tylko dla SMART_PANEL z fwApiVer 4. Panel z fwApiVer 6 na drugim CLU był odpytany.
+
+`verA verB` to prawdopodobnie wersja firmware modułu (np. `02 04` = 2.4). Nie jest to potwierdzone, a moduły IO/RELAY zwracają `00 00`. Końcowe `0x01` występuje tylko w RELAY_DIN_4. Prawdziwy hwType nie pojawia się w odpowiedzi: CLU bierze go ze swojej konfiguracji.
+
+### Zaobserwowany zimny start (prawdziwe CLU, 23 moduły)
+
+Pasywny zrzut `tfbus_sniff` podczas **restartu zasilania całej instalacji**: prawdziwe CLU i wszystkie moduły uruchomiły się jednocześnie. Restart samego CLU może przebiegać inaczej i nie został jeszcze przechwycony. Czasy liczone są od pierwszej ramki CLU.
+
+| t (ms) | Faza | Ramki |
+|---|---|---|
+| 0 | ADDR_ASSIGN | 15× `AA FF 02 SN[4 LE] CH` dla CH = 9…23, co ~8–14 ms, każda z ACK `AA 00 01 AB` |
+| +145 | Pierwszy cykl STATUS_POLL | adresy 1…23 po kolei; moduły zwracają pełny status |
+| +330 | Inicjalizacja MODULE_CMD (0xF0) | sekwencje inicjalizacji per moduł, adres 1 → 23 (patrz dokumenty modułów) |
+| +510 | VERSION_QUERY | `AA dd F9` do adresów 1–17 i 21–23; **pomija SMART_PANEL_FM_4** (18–20). Przeplatane z inicjalizacją 0xF0 |
+| +1910 | Inicjalizacja SMART_PANEL | zapisy rejestrów 0x31, potem `0x18 [00 00 02]` na panel; ~3 s na panel, 3 panele zachodzą na siebie (patrz [TFBUS_SMART_PANEL_FM_4.md](TFBUS_SMART_PANEL_FM_4.md#init-sequence-type-0x31)) |
+| +6410 | Stan ustalony | tylko STATUS_POLL, jeden cykl po wszystkich 23 modułach co ~145 ms |
+
+**Adres = kolejność deklaracji.** CLU nadaje adresy 1, 2, 3, … modułom TFBus (`OBJECT:new(2, …)`) w kolejności, w jakiej występują w OM.LUA. Wpisy Z-Wave (hwType `0x008500030011`) są pomijane. 14 z 15 przypisanych numerów seryjnych zgadza się z OM.LUA pod oczekiwanym indeksem. Jedyny wyjątek (adres 23) to moduł dodany już po wygenerowaniu tego OM.LUA. Typy modułów pod adresami 1–8, wywnioskowane z ich inicjalizacji 0xF0 i odpowiedzi na STATUS_POLL, również zgadzają się z tą kolejnością.
+
+**Inicjalizację napędza OM.LUA.** Poza adresowaniem, odpytywaniem i VERSION_QUERY CLU nie wysyła własnej inicjalizacji modułów. Każda ramka 0xF0/0x31/klasowa wynika z linii `:set()` w OM.LUA i jest wysyłana w kolejności linii OM.LUA. Przykład: `ROL7957:set(9, 30000)` → FEATURE_PARAM `b8 0b` (3000 × 10 ms). SMART_PANEL dostaje też drugi przebieg w odwrotnej kolejności po wykonaniu OM.LUA ([szczegóły](TFBUS_SMART_PANEL_FM_4.md#init-sequence-type-0x31)).
+
+**Ograniczenie sniffera (naprawione 2026-11-09):** parser RX `tfbus_sniff` nie znał długości ramek klasowych `0x16`, `0x17` ani `0x30` i po cichu je odrzucał, dlatego w zrzucie zimnego startu powyżej ich brakuje. Teraz parser dla nieznanych typów skanuje CRC.
+
+**Miękki restart (tylko CLU, po wysłaniu nowych skryptów; moduły zasilone).** Przechwycony naprawionym snifferem:
+- Znowu **brak RESET i SEEK**. Odpytywanie zatrzymuje się na ~2,9 s, potem wysyłane jest ADDR_ASSIGN dla **CH 7–23** (zimny start: CH 9–23), a następnie ta sama inicjalizacja co przy zimnym starcie.
+- Wszystkie trzy SMART_PANEL dostały dokładnie 275-ramkową sekwencję ze zrzutu październikowego, w identycznej kolejności.
+- Moduły, którym nie przypisano adresu ponownie, przez cały czas odpowiadały na swoich adresach.
+
+W zrzucie październikowym (`tfbus_capture_20261014_171505.log`, inne narzędzie, nieznany wyzwalacz) CLU wysłało RESET → 2,0 s → SEEK → ADDR_ASSIGN dla **wszystkich** CH 1–23. Drugi miękki restart, przechwycony bez filtrowania i z raportowaniem odrzuconych bajtów (`tfbus_sniff compact:true junk:true`), to potwierdził:
+- Odpytywanie zatrzymuje się w połowie cyklu (zaraz po odpytaniu adresu 3).
+- Potem magistrala **całkowicie milczy przez 2,9 s**: zero bajtów, poprawnych czy uszkodzonych, w całym 180-sekundowym zrzucie.
+- Następnie wysyłane jest ADDR_ASSIGN dla dokładnie CH 7–23, tak jak poprzednio.
+
+Przy **miękkim restarcie** firmware 5.13.8 naprawdę nie wysyła RESET ani SEEK i przypisuje ponownie tylko końcówkę listy modułów (CLU działało cały czas, więc wie, że moduły mają swoje adresy). Zimny start wykazał ten sam wzorzec, ale tamten zrzut nie raportował odrzuconych bajtów, więc uszkodzenia ramek przy włączaniu zasilania nie są wykluczone. Drugi pełny restart zasilania, przechwycony z `junk:true`, pokazuje ten sam wzorzec:
+- Po ciszy przy włączaniu zasilania pierwszym i jedynym zdarzeniem na poziomie bajtów jest **uszkodzony ACK** `aa 00 01 db`.
+- 76 ms później wysyłane jest ADDR_ASSIGN tylko dla CH 8–23. Żadnej z tych ramek nie poprzedzał RESET ani SEEK.
+- Uszkodzony ACK wygląda na kilka modułów odpowiadających jednocześnie na broadcast (SEEK).
+- Przerwa przed CH 8 odpowiada mniej więcej czasowi wysłania CH 1–7, ale żadnej z tych ramek nie zaobserwowano, a moduły 1–7 nie wysłały ACK.
+
+Liczba pominiętych kanałów różni się między startami (6–8).
+
+**Drugie, niezależne CLU** (26 modułów) zostało zrestartowane przez odłączenie zasilania i przechwycone z `junk:true`:
+- Brak RESET i SEEK.
+- ADDR_ASSIGN tylko dla **CH 5–26**, zaraz po ciszy przy włączaniu zasilania.
+- Następnie VERSION_QUERY i inicjalizacja z OM.LUA.
+- Wysłało też nieudokumentowaną dotąd ramkę **typu `0x0A`**: `AA 02 0A A2`, z odpowiedzią `AA 00 0B 00 03 00 00 00 00 00 00 00 00 A2` (10 bajtów ładunku). Zaraz po niej przyszło MODULE_CMD SET_RAMP_TIME / DIMMER_SET_VALUE do adresu 1.
+
+Zwykłe UDP **`req_reset`** do tego samego CLU (bez wysyłania skryptów) dało ślad na magistrali identyczny jak restart zasilania:
+- Odpytywanie trwało jeszcze ~1,6 s po żądaniu, potem magistrala milczała przez 2,7 s.
+- Następnie przyszło ADDR_ASSIGN dla tych samych CH 5–26 i jedna ramka `0x0A`.
+- Liczby wszystkich ramek inicjalizacji zgadzały się ze zrzutem restartu zasilania.
+- `checkAlive()` odpowiedziało 4,8 s po `req_reset`.
+
+Na danym CLU pominięty zakres jest stały (CLU_2: CH 1–4 trzy razy; CLU_1: pierwsze 6–8 kanałów, różnie przy każdym starcie).
+
+Częściowe przypisywanie adresów bez RESET/SEEK jest więc normalnym zachowaniem firmware prawdziwego CLU przy każdym (ponownym) starcie, czy to restart zasilania, wysłanie skryptów, czy `req_reset`. Nie jest to cecha jednej instalacji. Pełna sekwencja RESET → SEEK → wszystkie kanały ze zrzutu październikowego wymaga specjalnego wyzwalacza, np. zmiany listy modułów albo pierwszego startu z nowymi modułami.
+
+**Otwarte kwestie z tego zrzutu:**
+- Nie zaobserwowano ramki RESET (`AA FF 07`) ani SEEK (`AA FF 2A`). Magistrala milczała przez 3,9 s, a pierwszą ramką CLU było ADDR_ASSIGN dla CH 9.
+- **CH 1–8 nie zostały przypisane**, a mimo to moduły 1–8 odpowiadały na swoich zwykłych adresach już ~145 ms po pierwszej ramce, choć również zostały zrestartowane. Albo te moduły przechowują adres w pamięci nieulotnej, albo ich ramki ADDR_ASSIGN (oraz ewentualne RESET/SEEK) zostały wysłane, zanim magistrala lub sniffer się ustabilizowały, i przepadły. Rozstrzygnie to zrzut surowych bajtów albo zrzut, przy którym sniffer już działa, a restartowane są tylko moduły.
+- Do porównania: zrzut restartu samego CLU (moduły zasilone) oraz restartu samych modułów.
 
 ### Automat stanów
 

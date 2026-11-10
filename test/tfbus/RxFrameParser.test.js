@@ -125,4 +125,33 @@ describe('RxFrameParser', () => {
     assert.equal(frames.length, 1);
     assert.equal(frames[0][1], 0x00); // dest = CLU addr
   });
+  // Real CLU→SMART_PANEL init bytes (clu firmware/tfbus_capture_20261014_171505.log, addr 0x12):
+  // class frames 0x17 / 0x16 have no fixed length and used to be dropped silently.
+  it('splits class frames 0x17 / 0x30 / 0x16 interleaved with ACKs', () => {
+    const hex = [
+      'aa12170100' + '00ae', 'aa0001ab',
+      'aa1230000a' + '00'.repeat(20) + '82', 'aa0001ab',
+      'aa121600010200ad', 'aa0001ab',
+      'aa1204bc',
+    ];
+    const p = new RxFrameParser();
+    const frames = p.push(Buffer.from(hex.join(''), 'hex'));
+    assert.deepEqual(frames.map(f => f.toString('hex')), hex);
+  });
+
+  it('holds an unknown-type frame until the next start byte confirms its end', () => {
+    const p = new RxFrameParser();
+    assert.deepEqual(p.push(Buffer.from('aa12170100' + '00ae', 'hex')), []);
+    const frames = p.push(Buffer.from('aa0001ab', 'hex'));
+    assert.deepEqual(frames.map(f => f.toString('hex')), ['aa121701' + '0000ae', 'aa0001ab']);
+  });
+
+  it('reads module responses by their length byte, not the type table', () => {
+    // byte[2] = 0x02 must not be taken for ADDR_ASSIGN (9 bytes)
+    const resp = Buffer.from('aa000200a8', 'hex');
+    resp[4] = resp[0] ^ resp[1] ^ resp[2] ^ resp[3];
+    const p = new RxFrameParser();
+    const frames = p.push(Buffer.concat([resp, Buffer.from('aa1204bc', 'hex')]));
+    assert.deepEqual(frames.map(f => f.toString('hex')), [resp.toString('hex'), 'aa1204bc']);
+  });
 });

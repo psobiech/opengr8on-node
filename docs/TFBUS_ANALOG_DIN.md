@@ -54,6 +54,47 @@ set analog output ch0 to 5.0V:
 
 ---
 
+## Observed on a real CLU (fwType 2, fwApiVer 1)
+
+Captured at a cold boot of a real CLU (2026-11-09; module `461004209`, addr 2, OM.LUA hwType `0x19`). This differs from the sections above, which follow the fwApiVer-2 interface XML.
+
+**VERSION_QUERY reply**: `01 02 0d 02` (fwApiVer 1 + 3 bytes).
+
+**Query `0x0A`** (sub-device search, see below): sent once, right after the first poll cycle and before the module's MODULE_CMD init and the VERSION_QUERY round.
+```
+CLU → AA 02 0A A2
+     ← AA 00 0B 00 03 00 00 00 00 00 00 00 00 A2   (10-byte payload; meaning unknown)
+```
+
+#### Query 0x0A — sub-device search (decompiled)
+
+From the real CLU firmware decompile (`clu firmware/decompiled/tfbus_rx.c`). `tfbus_rx_dispatcher` handles a reply according to the last frame type sent (`tx_state+0x23`). For type `0x0A`:
+- **Empty reply** (bare ACK): logged, then a short wait (`FUN_000093ec(0x14)`) and the module's retry counter (`+0x2c`) is incremented.
+- **Data reply**: `parse_rx_device_event(payload, module)`. If the module is in "registry" mode (`module+0x40 == 1`) it calls `parse_rx_device_registry`:
+  - `payload[2..9]` is copied as an **8-byte device ID** (the size of a 1-Wire ROM code). `payload[2]` is stored as the device family/type and `payload[1]` as a sub-field. The 32-bit key is `payload[3..6]` LE.
+  - **ID bytes `payload[3..8]` all zero → "no (more) devices" flag** (`tx_state+0x18 = 1`).
+  - Otherwise the ID is looked up in, or added to, a 160-entry sub-device table (0x50 bytes each), linked back to the hosting module.
+- In the other mode, bit 7 of `payload[0]` = end flag, and `payload[2..5]` LE = device key.
+
+So `0x0A` enumerates devices attached behind a module. On ANALOG_DIN that is the **ONE_WIRE_HUB**. The observed reply `00 03 00 00 00 00 00 00 00 00` has an all-zero ID, meaning no device found, which matches CLU_2 having no 1-Wire sensors in OM.LUA.
+
+The sender was not found statically: no `tfbus_queue_command(…, 10, …)` call, no `tx_state+0x23 = 10` store and no frame template in flash. It goes through a call path Ghidra did not resolve.
+
+**Init** (MODULE_CMD, 1 record per frame, per AnalogOUT ch = 0..3):
+```
+0d 03 00 [00 ch 00]       sub-type 0x0d — unknown
+06 03 00 [ch 32 00]       sub-type 0x06 with 0x32 = 50 — possibly set(3, 500) in 10 ms units (unconfirmed)
+```
+OM.LUA for each AnalogOUT: `set(0,0) set(2,1) set(3,500) set(4,0) set(5,10)`.
+
+**STATUS_POLL reply** (one TLV record):
+```
+01  02 0e 10  [7 × u16 LE]   AnalogIN_01..07, unit 0.01
+```
+Example: `… 00×12 8d 09` → AnalogIN_07 = 0x098d = 24.45, which matches `ANA1249:get(0)` = 24.45 read live from the CLU.
+
+---
+
 ## CLU Lua API
 
 Source of truth: `docs/device-interfaces/module_2_0_ANALOG_DIN_fv02_02.xml`

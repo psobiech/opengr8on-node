@@ -11,6 +11,7 @@ export { LuaScriptCommand } from './commands/LuaScriptCommand.js';
 export { SetIpCommand } from './commands/SetIpCommand.js';
 export { SetKeyCommand } from './commands/SetKeyCommand.js';
 export { ResetCommand } from './commands/ResetCommand.js';
+export { RefreshModulesCommand } from './commands/RefreshModulesCommand.js';
 export { StartTFTPdCommand } from './commands/StartTFTPdCommand.js';
 export { StopTFTPdCommand } from './commands/StopTFTPdCommand.js';
 export { GenerateMeasurementsCommand, RESPONSE_OK } from './commands/GenerateMeasurementsCommand.js';

@@ -63,7 +63,7 @@ Po `req_set_key` CLU przełącza się na klucz dostarczony przez wywołującego 
 | `req_check_alive` | `resp_check_alive` | unicast | Niskopoziomowe sprawdzenie aktywności (nie-Lua) |
 | `req_refresh_modules` | `resp_refresh_modules` | unicast | Przeładuj listę modułów |
 | `req_refresh_config` | `resp_refresh_config` | unicast | Przeładuj konfigurację CLU |
-| `req_diagnostic_pack` | `resp_diagnostic_pack` | unicast | Diagnostyka JSON CLU + modułów |
+| `req_diagnostic_refresh:<ip>:<session>` | `resp_diagnostic_refresh:<session>:OK` (lub `ERROR:1` / `ERROR:2`) | unicast | CLU zapisuje `m:\DIAGNOSTIC_PACK.JSON`, OM pobiera go przez TFTP |
 | `req_start_fw_upgrade` | `resp_fw_upgrade_status` | unicast | Rozpocznij aktualizację OTA firmware |
 
 ---

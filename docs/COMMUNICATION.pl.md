@@ -149,7 +149,7 @@ TFBUS 2.0 to half-duplex protokół master/slave na RS485. CLU jest zawsze maste
  ┌──────┬───────────┬────────────┬─────────────────┬────────┐
  │ 0xAA │ dest_addr │ frame_type │    payload      │  XOR   │
  └──────┴───────────┴────────────┴─────────────────┴────────┘
-  start   adres RS485  ID komendy   0–29 bajtów      suma kontr.
+  start   adres RS485  ID komendy   0–28 bajtów      suma kontr.
 ```
 
 - `dest_addr`: moduły używają `1–48`; `0xFF` = broadcast; `0x00` = CLU (używane w odpowiedziach modułów)

@@ -39,8 +39,9 @@ describe('buildFrame', () => {
     assert.equal(xor, frame[frame.length - 1]);
   });
 
-  it('throws on payload > 29 bytes', () => {
-    assert.throws(() => buildFrame(0x01, 0x04, Buffer.alloc(30)), RangeError);
+  it('throws on payload > 28 bytes (real CLU limit, frame <= 32)', () => {
+    assert.throws(() => buildFrame(0x01, 0x04, Buffer.alloc(29)), RangeError);
+    assert.equal(buildFrame(0x01, 0x04, Buffer.alloc(28)).length, 32);
   });
 });
 

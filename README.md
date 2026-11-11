@@ -24,6 +24,8 @@ Ten projekt zawiera:
 
 [opengr8on-smartpanel-rp2350](https://github.com/psobiech/opengr8on-smartpanel-rp2350) — emulator modułu SMART_PANEL_FM_4 na płytce RP2350 z ekranem dotykowym.
 
+[opengr8on-vscode](https://github.com/psobiech/opengr8on-vscode) — rozszerzenie VS Code, alternatywa dla Object Managera: projekt instalacji jako pliki YAML + Lua w gicie, generowanie OM.LUA / USER.LUA identycznych z Object Managerem, import `.omp`, wysyłanie do CLU, podgląd urządzeń i logów. Korzysta z `opengr8on-node/client` z tego repozytorium.
+
 ### Dokumentacja protokołu
 
 | Dokument | Opis |
@@ -495,6 +497,8 @@ Without `--output` the result goes to stdout.
 [opengr8on](https://github.com/psobiech/opengr8on) — Java implementation of vCLU, more mature and better tested. If you need a stable virtual CLU, start there.
 
 [opengr8on-clu-esp32](https://github.com/psobiech/opengr8on-clu-esp32) — hardware CLU on ESP32-S3 (C port of this repo's vCLU and `src/tfbus`).
+
+[opengr8on-vscode](https://github.com/psobiech/opengr8on-vscode) — VS Code extension, an alternative to Object Manager: the installation project as YAML + Lua files in git, OM.LUA / USER.LUA generated identical to Object Manager's, `.omp` import, upload to CLUs, device explorer and logs. Uses this repo's `opengr8on-node/client`.
 
 [opengr8on-smartpanel-rp2350](https://github.com/psobiech/opengr8on-smartpanel-rp2350) — SMART_PANEL_FM_4 module emulator on an RP2350 touch-display board.
 

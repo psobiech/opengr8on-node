@@ -44,6 +44,18 @@ const SYSTEM_XML = `<object-stream>
               <Input id="23"><name>BTN</name><nameOnCLU>BUT0001</nameOnCLU><number>0</number><classTypeId>7</classTypeId><module reference="5"/><features id="24"/><events id="25"/></Input>
               <Output id="26"><name>LAMP2</name><nameOnCLU>DIM0002</nameOnCLU><number>1</number><classTypeId>5</classTypeId><isRemoved>true</isRemoved><module reference="5"/><features id="27"/><events id="28"/></Output>
             </iosList>
+            <peripheryList id="40">
+              <HardwarePeripheryCLU id="41">
+                <clu reference="14"/><name>t</name><nameOnCLU>TIM0001</nameOnCLU><typeName>Timer</typeName><typeId>6</typeId><typeVersion>1</typeVersion><existsOnCLU>true</existsOnCLU><isRemoved>false</isRemoved>
+                <features class="linked-list" id="42"><EmbeddedFeature id="43"><name>Time</name><type id="44"><paramType>NUMBER</paramType></type><accessType>ALL</accessType><initValue>240</initValue><index>0</index></EmbeddedFeature></features>
+                <events id="45"><Event id="46"><name>OnTimer</name><index>0</index><commands class="linked-list" id="47"><string>CLU_1-&gt;ELO()</string></commands></Event></events>
+              </HardwarePeripheryCLU>
+              <HardwarePeripheryCLU id="48">
+                <clu reference="14"/><name>hh</name><nameOnCLU>THE0001</nameOnCLU><typeName>Thermostat</typeName><typeId>18</typeId><typeVersion>2</typeVersion><isRemoved>true</isRemoved>
+                <features class="linked-list" id="49"><EmbeddedFeature id="50"><name>Source</name><type id="51"><paramType>TABLE</paramType></type><accessType>WRITE</accessType><initValue>CLU_1-&gt;LAMP-&gt;Value</initValue><index>0</index></EmbeddedFeature></features>
+                <events id="52"/>
+              </HardwarePeripheryCLU>
+            </peripheryList>
             <scripts id="29"><Script id="30"><name>ELO</name><parameters id="31"/><isManualEdit>true</isManualEdit></Script></scripts>
           </clu>
         </specificObject>
@@ -95,6 +107,19 @@ describe('readOmpProject', () => {
 
   it('reads script sources from the archive', () => {
     assert.deepEqual(readOmpProject(omp()).clus[0].scripts, [{ name: 'ELO', parameters: [], isManualEdit: 'true', source: 'print(1)\r\n' }]);
+  });
+});
+
+describe('readOmpProject periphery', () => {
+  it('reads virtual objects with features, events and the removed flag, in project order', () => {
+    const c = readOmpProject(omp()).clus[0];
+    assert.deepEqual(c.periphery.map(p => [p.name, p.nameOnCLU, p.typeName, p.typeId, p.typeVersion, p.isRemoved]), [
+      ['t', 'TIM0001', 'Timer', '6', '1', 'false'],
+      ['hh', 'THE0001', 'Thermostat', '18', '2', 'true'],
+    ]);
+    assert.deepEqual(c.periphery[0].features.map(f => [f.name, f.index, f.initValue]), [['Time', 0, '240']]);
+    assert.deepEqual(c.periphery[0].events, [{ name: 'OnTimer', index: 0, commands: ['CLU_1->ELO()'] }]);
+    assert.deepEqual(c.periphery[1].features.map(f => [f.name, f.paramType, f.initValue]), [['Source', 'TABLE', 'CLU_1->LAMP->Value']]);
   });
 });
 

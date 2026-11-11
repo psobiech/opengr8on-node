@@ -13,7 +13,7 @@ const PROJECT_FILE = '.project';
 
 type XmlNode = Record<string, unknown>;
 
-const ARRAY_TAGS = new Set(['TreeObject', 'Input', 'Output', 'EmbeddedFeature', 'Event', 'string', 'Script', 'InputOutputDefinition']);
+const ARRAY_TAGS = new Set(['TreeObject', 'Input', 'Output', 'EmbeddedFeature', 'Event', 'string', 'Script', 'InputOutputDefinition', 'HardwarePeripheryCLU']);
 
 const PARSER = new XMLParser({
   ignoreAttributes: false,
@@ -80,6 +80,23 @@ export interface OmpScript {
   source?: string;
 }
 
+/** Virtual object ("periphery": Timer, Thermostat, Scheduler, ...) of a CLU. */
+export interface OmpPeriphery {
+  /** OM display name (NAME_PERIPHERY) */
+  name: string;
+  /** object id on the CLU (e.g. TIM8908) */
+  nameOnCLU: string;
+  /** interface object name (Timer, Thermostat, ...) */
+  typeName?: string;
+  /** object class (OBJECT:new first argument) */
+  typeId?: string;
+  typeVersion?: string;
+  isRemoved?: string;
+  existsOnCLU?: string;
+  features: OmpFeature[];
+  events: OmpEvent[];
+}
+
 export interface OmpClu {
   name: string;
   nameOnCLU: string;
@@ -95,6 +112,8 @@ export interface OmpClu {
   events: OmpEvent[];
   modules: OmpModule[];
   ios: OmpIo[];
+  /** virtual objects, in project order (incl. removed ones, see isRemoved) */
+  periphery: OmpPeriphery[];
   scripts: OmpScript[];
 }
 
@@ -211,6 +230,31 @@ function ios(list: unknown, refs: Refs): OmpIo[] {
   return out;
 }
 
+function periphery(list: unknown, refs: Refs): OmpPeriphery[] {
+  const holder = refs.resolve(list);
+  if (!holder) return [];
+  const nodes: XmlNode[] = [];
+  for (const [key, v] of Object.entries(holder)) {
+    if (key.startsWith('@_') || key === '#text') continue;
+    for (const n of toArray(v)) {
+      const r = refs.resolve(n);
+      if (r) nodes.push(r);
+    }
+  }
+  nodes.sort((a, b) => Number(a['@_id'] ?? NaN) - Number(b['@_id'] ?? NaN)); // document order
+  return nodes.map(p => ({
+    name: text(p['name']) ?? '',
+    nameOnCLU: text(p['nameOnCLU']) ?? '',
+    typeName: text(p['typeName']),
+    typeId: text(p['typeId']),
+    typeVersion: text(p['typeVersion']),
+    isRemoved: text(p['isRemoved']),
+    existsOnCLU: text(p['existsOnCLU']),
+    features: features(p['features'], refs),
+    events: events(p['events'], refs),
+  }));
+}
+
 function scripts(list: unknown, refs: Refs, cluName: string, zip: AdmZip): OmpScript[] {
   const holder = refs.resolve(list);
   return toArray(holder?.['Script'])
@@ -279,6 +323,7 @@ export function readOmpProject(source: string | Buffer): OmpProject {
       events: events(c['eventsList'], refs),
       modules: toArray(refs.resolve(c['modulesList'])?.['InputOutputDefinition']).map(m => moduleOf(m, refs)).filter((m): m is OmpModule => !!m),
       ios: ios(c['iosList'], refs),
+      periphery: periphery(c['peripheryList'], refs),
       scripts: scripts(c['scripts'], refs, name, zip),
     };
   });

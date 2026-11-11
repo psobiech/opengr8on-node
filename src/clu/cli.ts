@@ -124,8 +124,9 @@ export async function runCluCli(argv: string[]): Promise<number> {
     }
     case 'fetch': {
       mkdirSync(args.outDir, { recursive: true });
-      if (!(await client.startTFTPdServer())) {
-        process.stderr.write(`Error: ${clu.name} did not start TFTPd\n`);
+      const started = await client.startTFTPdServer();
+      if (!started) {
+        process.stderr.write(`Error: ${clu.name} ${started === false ? 'refused to start TFTPd (CLU in lockdown?)' : 'did not answer the TFTPd start'}\n`);
         return 1;
       }
       let failed = 0;

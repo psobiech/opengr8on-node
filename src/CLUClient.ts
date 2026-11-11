@@ -116,10 +116,14 @@ export class CLUClient extends Client {
     return decrypted.toString('utf8');
   }
 
-  async startTFTPdServer(): Promise<true | null> {
+  /**
+   * true: TFTPd started; false: the CLU answered but refused (observed `resp:ERROR` while a CLU was
+   * in lockdown); null: no answer.
+   */
+  async startTFTPdServer(): Promise<boolean | null> {
     const decrypted = await this._request(StartTFTPdCommand.request());
     if (!decrypted) return null;
-    return StartTFTPdCommand.responseFromBuffer(decrypted) ? true : null;
+    return StartTFTPdCommand.responseFromBuffer(decrypted) ? true : false;
   }
 
   async stopTFTPdServer(): Promise<true | null> {

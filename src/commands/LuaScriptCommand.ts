@@ -5,6 +5,23 @@ import { CRLF, MIN_IP_CHARACTERS, MIN_SESSION_CHARACTERS, MAX_SESSION_CHARACTERS
 const REQUEST_CMD = 'req';
 const RESPONSE_CMD = 'resp';
 
+/**
+ * `cmd:ip:session:payload` → 4 parts; the payload keeps its own colons (times "22:44:51", URLs, a
+ * script with `CLU->OBJ`...). JavaScript's split(':', 4) would drop everything after the 4th part.
+ */
+function splitHeader(text: string): string[] {
+  const parts: string[] = [];
+  let from = 0;
+  for (let k = 0; k < 3; k++) {
+    const i = text.indexOf(':', from);
+    if (i < 0) return parts;
+    parts.push(text.slice(from, i));
+    from = i + 1;
+  }
+  parts.push(text.slice(from));
+  return parts;
+}
+
 export const LuaScriptCommand = {
   CHECK_ALIVE: 'checkAlive()',
   GET_VAR: 'getVar',
@@ -33,7 +50,7 @@ export const LuaScriptCommand = {
 
   requestFromBuffer(buf: Buffer): { ipAddress: string; sessionId: number; script: string } | null {
     if (!LuaScriptCommand.requestMatches(buf)) return null;
-    const parts = asString(buf).split(':', 4);
+    const parts = splitHeader(asString(buf));
     if (parts.length < 4) return null;
     return { ipAddress: parts[1], sessionId: hexToNumber(parts[2]), script: parts[3] };
   },
@@ -60,7 +77,7 @@ export const LuaScriptCommand = {
 
   responseFromBuffer(buf: Buffer): { ipAddress: string; sessionId: number; returnValue: string } | null {
     if (!LuaScriptCommand.responseMatches(buf)) return null;
-    const parts = asString(buf).split(':', 4);
+    const parts = splitHeader(asString(buf));
     if (parts.length < 4) return null;
     return { ipAddress: parts[1], sessionId: hexToNumber(parts[2]), returnValue: parts[3] };
   },

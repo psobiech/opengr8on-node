@@ -36,6 +36,7 @@ const SYSTEM_XML = `<object-stream>
             <hardwareType>00000013</hardwareType><hardwareVersion>00000001</hardwareVersion>
             <firmwareType>00000003</firmwareType><firmwareVersion>00000203</firmwareVersion>
             <cipherKeyType>PROJECT_KEY</cipherKeyType>
+            <isRemoved>false</isRemoved>
             <embeddedFeaturesList id="15"><EmbeddedFeature id="16"><name>UseCloud</name><type id="17"><paramType>BOOLEAN</paramType></type><accessType>ALL</accessType><initValue>0</initValue><defaultInitValue>1</defaultInitValue><index>18</index></EmbeddedFeature></embeddedFeaturesList>
             <eventsList id="18"><Event id="19"><name>OnInit</name><index>0</index><commands class="linked-list" id="20"/></Event></eventsList>
             <modulesList class="linked-list" id="21"><InputOutputDefinition reference="5"/></modulesList>
@@ -65,10 +66,11 @@ const SYSTEM_XML = `<object-stream>
   </TreeObject>
 </object-stream>`;
 
-function omp() {
+function omp(systemXml = SYSTEM_XML) {
   const zip = new AdmZip();
-  zip.addFile('system.xml', Buffer.from(SYSTEM_XML));
+  zip.addFile('system.xml', Buffer.from(systemXml));
   zip.addFile('.project', Buffer.from('<projectDescription><name>Test</name></projectDescription>'));
+  zip.addFile('properties.xml', Buffer.from('<object-stream><ProjectProperties><projectCipherKey><keyBytes>AAAA</keyBytes></projectCipherKey><gateway>10.0.0.1</gateway><netmask>255.255.255.0</netmask></ProjectProperties></object-stream>'));
   zip.addFile('scripts/CLU_1/ELO.lua', Buffer.from('print(1)\r\n'));
   zip.addFile('diagnostics/100000011/om.lua/1', Buffer.from('old'));
   zip.addFile('diagnostics/100000011/om.lua/2', Buffer.from('new'));
@@ -103,6 +105,17 @@ describe('readOmpProject', () => {
     assert.equal(c.ios[1].module?.moduleClass, '1a'); // via reference
     assert.deepEqual(lamp.features.map(f => [f.name, f.index, f.initValue, f.accessType]), [['MinValue', 3, '0.32', 'ALL'], ['Value', 0, undefined, 'READ']]);
     assert.deepEqual(lamp.events, [{ name: 'OnSwitchOn', index: 0, commands: ['CLU_1->LAMP2->Switch(0)', 'CLU_1->ELO()'] }]);
+  });
+
+  it('reads the project network settings (gateway, netmask) from properties.xml', () => {
+    assert.deepEqual(readOmpProject(omp()).network, { gateway: '10.0.0.1', netmask: '255.255.255.0' });
+  });
+
+  it('reports a CLU in the OM trash (isRemoved)', () => {
+    assert.equal(readOmpProject(omp()).clus[0].isRemoved, 'false');
+    const trashed = SYSTEM_XML.replace('<cipherKeyType>PROJECT_KEY</cipherKeyType>\n            <isRemoved>false</isRemoved>', '<cipherKeyType>PROJECT_KEY</cipherKeyType>\n            <isRemoved>true</isRemoved>');
+    assert.notEqual(trashed, SYSTEM_XML);
+    assert.equal(readOmpProject(omp(trashed)).clus[0].isRemoved, 'true');
   });
 
   it('reads script sources from the archive', () => {

@@ -10,6 +10,7 @@ import AdmZip from 'adm-zip';
 
 const SYSTEM_XML = 'system.xml';
 const PROJECT_FILE = '.project';
+const PROPERTIES_FILE = 'properties.xml';
 
 type XmlNode = Record<string, unknown>;
 
@@ -108,6 +109,8 @@ export interface OmpClu {
   firmwareType?: string;
   firmwareVersion?: string;
   cipherKeyType?: string;
+  /** "true": the CLU is in OM's trash (deleted from the project tree, still stored in system.xml) */
+  isRemoved?: string;
   features: OmpFeature[];
   events: OmpEvent[];
   modules: OmpModule[];
@@ -120,6 +123,12 @@ export interface OmpClu {
 export interface OmpProject {
   name: string;
   clus: OmpClu[];
+  /**
+   * Project network settings (properties.xml `gateway` / `netmask`, dotted IPv4). OM writes them into
+   * every GATE's OM.LUA (`GATE:new(5000, ip, netmask, gateway, "", "")`). Only these two fields are
+   * read from properties.xml (it also holds the project key, see readProjectCipherKey).
+   */
+  network: { gateway?: string; netmask?: string };
 }
 
 const toArray = (v: unknown): XmlNode[] => (v == null ? [] : Array.isArray(v) ? (v as XmlNode[]) : [v as XmlNode]);
@@ -319,6 +328,7 @@ export function readOmpProject(source: string | Buffer): OmpProject {
       firmwareType: text(c['firmwareType']),
       firmwareVersion: text(c['firmwareVersion']),
       cipherKeyType: text(c['cipherKeyType']),
+      isRemoved: text(c['isRemoved']),
       features: features(c['embeddedFeaturesList'], refs),
       events: events(c['eventsList'], refs),
       modules: toArray(refs.resolve(c['modulesList'])?.['InputOutputDefinition']).map(m => moduleOf(m, refs)).filter((m): m is OmpModule => !!m),
@@ -330,7 +340,9 @@ export function readOmpProject(source: string | Buffer): OmpProject {
 
   const projectXml = zip.getEntry(PROJECT_FILE)?.getData().toString('utf8');
   const projectName = projectXml ? /<name>([^<]*)<\/name>/.exec(projectXml)?.[1] ?? '' : '';
-  return { name: projectName, clus };
+  const propertiesXml = zip.getEntry(PROPERTIES_FILE)?.getData().toString('utf8') ?? '';
+  const ipv4 = (tag: string) => new RegExp(`<${tag}>\\s*(\\d{1,3}(?:\\.\\d{1,3}){3})\\s*</${tag}>`).exec(propertiesXml)?.[1];
+  return { name: projectName, clus, network: { gateway: ipv4('gateway'), netmask: ipv4('netmask') } };
 }
 
 /**

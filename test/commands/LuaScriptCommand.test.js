@@ -59,6 +59,18 @@ describe('LuaScriptCommand', () => {
   });
 
   describe('response', () => {
+    it('responseFromBuffer() keeps colons inside the value (time, URL)', () => {
+      for (const value of ['22:44:51', 'http://x:8080/a', '1\x1f22:44:51\x1fa:b']) {
+        const parsed = LuaScriptCommand.responseFromBuffer(LuaScriptCommand.response(LOCAL_IP, SESSION_ID, value).toBuffer());
+        assert.equal(parsed?.returnValue, value);
+      }
+    });
+
+    it('requestFromBuffer() keeps colons inside the script', () => {
+      const parsed = LuaScriptCommand.requestFromBuffer(LuaScriptCommand.request(LOCAL_IP, SESSION_ID, 'print("a:b")').toBuffer());
+      assert.equal(parsed?.script.trimEnd(), 'print("a:b")');
+    });
+
     it('toBuffer() format: resp:ip:sessionId:returnValue', () => {
       const buf = LuaScriptCommand.response(LOCAL_IP, SESSION_ID, 'true').toBuffer();
       const str = buf.toString();

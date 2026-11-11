@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<object class="75" name="EnergyMeter" version="1">
+	<features>
+		<feature default="192.168.1.200" get="true" index="0" name="IpAddress" set="true" type="str" unit="">
+			<hint lang="pl" value="Adres IP licznika energii w sieci Modbus TCP. Zmiana wartości powoduje ponowne nawiązanie połączenia."/>
+			<hint lang="en" value="IP address of the energy meter on the Modbus TCP network. Changing it forces the connection to be re-established."/>
+			<desc resKey="energymeter_ipaddress"/>
+		</feature>
+		<feature default="502" get="true" index="1" name="Port" range="1-65535" set="true" type="num" unit="">
+			<hint lang="pl" value="Port TCP serwera Modbus w liczniku (standardowo 502). Zmiana wartości powoduje ponowne nawiązanie połączenia."/>
+			<hint lang="en" value="TCP port of the meter's Modbus server (502 by default). Changing it forces the connection to be re-established."/>
+			<desc resKey="energymeter_port"/>
+		</feature>
+		<feature default="1" get="true" index="2" name="DeviceAddress" range="1-247" set="true" type="num" unit="">
+			<hint lang="pl" value="Adres urządzenia Modbus (unit id) w zakresie 1-247. Musi być zgodny z adresem ustawionym w liczniku."/>
+			<hint lang="en" value="Modbus device address (unit id), range 1-247. Must match the address configured in the meter."/>
+			<desc resKey="energymeter_unit"/>
+		</feature>
+		<feature default="5000" get="true" index="3" name="RefreshInterval" range="500-3600000" set="true" type="num" unit="ms">
+			<hint lang="pl" value="Okres cyklicznego odpytywania licznika w milisekundach. Co ten czas odświeżane są wszystkie odczyty i sprawdzane progi."/>
+			<hint lang="en" value="Meter polling interval in milliseconds. All readings are refreshed and thresholds evaluated on each cycle."/>
+			<desc resKey="energymeter_refreshinterval"/>
+		</feature>
+
+		<feature enum="0,1,2" get="true" index="4" name="State" set="false" type="num" unit="">
+			<enum name="Disconnected" resKey="energymeter_state_enum_disconnected" value="0"/>
+			<enum name="Connected" resKey="energymeter_state_enum_connected" value="1"/>
+			<enum name="Error" resKey="energymeter_state_enum_error" value="2"/>
+			<hint lang="pl" value="Stan połączenia z licznikiem:&#13;0 - rozłączony&#13;1 - połączony&#13;2 - błąd komunikacji"/>
+			<hint lang="en" value="Connection state of the meter:&#13;0 - disconnected&#13;1 - connected&#13;2 - communication error"/>
+			<desc resKey="energymeter_state"/>
+		</feature>
+		<feature get="true" index="5" name="ErrorCode" set="false" type="num" unit="">
+			<hint lang="pl" value="Kod ostatniego błędu komunikacji:&#13;0 - system OK&#13;&gt;0 - kod wyjątku Modbus zwrócony przez licznik&#13;-1 - błąd transportu / niepoprawna ramka&#13;-7 - błąd nawiązania połączenia"/>
+			<hint lang="en" value="Last communication error code:&#13;0 - system OK&#13;&gt;0 - Modbus exception code returned by the meter&#13;-1 - transport error / malformed frame&#13;-7 - connection error"/>
+			<desc resKey="energymeter_errorcode"/>
+		</feature>
+
+		<feature get="true" index="6" name="VoltageL1" set="false" type="num" unit="V">
+			<hint lang="pl" value="Napięcie skuteczne fazy L1 względem przewodu neutralnego (L-N)."/>
+			<hint lang="en" value="RMS line-to-neutral voltage of phase L1 (L-N)."/>
+			<desc resKey="energymeter_voltagel1"/>
+		</feature>
+		<feature get="true" index="7" name="VoltageL2" set="false" type="num" unit="V">
+			<hint lang="pl" value="Napięcie skuteczne fazy L2 względem przewodu neutralnego (L-N)."/>
+			<hint lang="en" value="RMS line-to-neutral voltage of phase L2 (L-N)."/>
+			<desc resKey="energymeter_voltagel2"/>
+		</feature>
+		<feature get="true" index="8" name="VoltageL3" set="false" type="num" unit="V">
+			<hint lang="pl" value="Napięcie skuteczne fazy L3 względem przewodu neutralnego (L-N)."/>
+			<hint lang="en" value="RMS line-to-neutral voltage of phase L3 (L-N)."/>
+			<desc resKey="energymeter_voltagel3"/>
+		</feature>
+
+		<feature get="true" index="9" name="CurrentL1" set="false" type="num" unit="A">
+			<hint lang="pl" value="Prąd skuteczny fazy L1."/>
+			<hint lang="en" value="RMS current of phase L1."/>
+			<desc resKey="energymeter_currentl1"/>
+		</feature>
+		<feature get="true" index="10" name="CurrentL2" set="false" type="num" unit="A">
+			<hint lang="pl" value="Prąd skuteczny fazy L2."/>
+			<hint lang="en" value="RMS current of phase L2."/>
+			<desc resKey="energymeter_currentl2"/>
+		</feature>
+		<feature get="true" index="11" name="CurrentL3" set="false" type="num" unit="A">
+			<hint lang="pl" value="Prąd skuteczny fazy L3."/>
+			<hint lang="en" value="RMS current of phase L3."/>
+			<desc resKey="energymeter_currentl3"/>
+		</feature>
+
+		<feature get="true" index="12" name="ActivePowerL1" set="false" type="num" unit="W">
+			<hint lang="pl" value="Moc czynna fazy L1. Wartość dodatnia oznacza pobór, ujemna - oddawanie energii."/>
+			<hint lang="en" value="Active power of phase L1. Positive means import (draw), negative means export."/>
+			<desc resKey="energymeter_powerl1"/>
+		</feature>
+		<feature get="true" index="13" name="ActivePowerL2" set="false" type="num" unit="W">
+			<hint lang="pl" value="Moc czynna fazy L2. Wartość dodatnia oznacza pobór, ujemna - oddawanie energii."/>
+			<hint lang="en" value="Active power of phase L2. Positive means import (draw), negative means export."/>
+			<desc resKey="energymeter_powerl2"/>
+		</feature>
+		<feature get="true" index="14" name="ActivePowerL3" set="false" type="num" unit="W">
+			<hint lang="pl" value="Moc czynna fazy L3. Wartość dodatnia oznacza pobór, ujemna - oddawanie energii."/>
+			<hint lang="en" value="Active power of phase L3. Positive means import (draw), negative means export."/>
+			<desc resKey="energymeter_powerl3"/>
+		</feature>
+
+		<feature get="true" index="15" name="ActivePower" set="false" type="num" unit="W">
+			<hint lang="pl" value="Całkowita moc czynna (suma wszystkich faz). Wartość dodatnia = pobór z sieci, ujemna = oddawanie do sieci."/>
+			<hint lang="en" value="Total active power (sum of all phases). Positive = import from grid, negative = export to grid."/>
+			<desc resKey="energymeter_activepower"/>
+		</feature>
+		<feature get="true" index="16" name="ReactivePower" set="false" type="num" unit="var">
+			<hint lang="pl" value="Całkowita moc bierna (suma wszystkich faz)."/>
+			<hint lang="en" value="Total reactive power (sum of all phases)."/>
+			<desc resKey="energymeter_reactivepower"/>
+		</feature>
+		<feature get="true" index="17" name="ApparentPower" set="false" type="num" unit="VA">
+			<hint lang="pl" value="Całkowita moc pozorna (suma wszystkich faz)."/>
+			<hint lang="en" value="Total apparent power (sum of all phases)."/>
+			<desc resKey="energymeter_apparentpower"/>
+		</feature>
+		<feature get="true" index="18" name="PowerFactor" set="false" type="num" unit="">
+			<hint lang="pl" value="Całkowity współczynnik mocy (cos φ) całej instalacji."/>
+			<hint lang="en" value="Total power factor (cos φ) of the whole installation."/>
+			<desc resKey="energymeter_powerfactor"/>
+		</feature>
+		<feature get="true" index="19" name="Frequency" set="false" type="num" unit="Hz">
+			<hint lang="pl" value="Częstotliwość napięcia sieci zasilającej."/>
+			<hint lang="en" value="Frequency of the supply voltage."/>
+			<desc resKey="energymeter_frequency"/>
+		</feature>
+
+		<feature get="true" index="20" name="Energy" set="false" type="num" unit="kWh">
+			<hint lang="pl" value="Licznik energii czynnej pobranej z sieci (import), zliczany narastająco."/>
+			<hint lang="en" value="Cumulative active energy imported from the grid (running total)."/>
+			<desc resKey="energymeter_importenergy"/>
+		</feature>
+		<feature get="true" index="21" name="ExportedEnergy" set="false" type="num" unit="kWh">
+			<hint lang="pl" value="Licznik energii czynnej oddanej do sieci (eksport), zliczany narastająco."/>
+			<hint lang="en" value="Cumulative active energy exported to the grid (running total)."/>
+			<desc resKey="energymeter_exportenergy"/>
+		</feature>
+
+		<feature get="true" index="22" name="PowerFactorL1" set="false" type="num" unit="">
+			<hint lang="pl" value="Współczynnik mocy (cos φ) fazy L1."/>
+			<hint lang="en" value="Power factor (cos φ) of phase L1."/>
+			<desc resKey="energymeter_powerfactorl1"/>
+		</feature>
+		<feature get="true" index="23" name="PowerFactorL2" set="false" type="num" unit="">
+			<hint lang="pl" value="Współczynnik mocy (cos φ) fazy L2."/>
+			<hint lang="en" value="Power factor (cos φ) of phase L2."/>
+			<desc resKey="energymeter_powerfactorl2"/>
+		</feature>
+		<feature get="true" index="24" name="PowerFactorL3" set="false" type="num" unit="">
+			<hint lang="pl" value="Współczynnik mocy (cos φ) fazy L3."/>
+			<hint lang="en" value="Power factor (cos φ) of phase L3."/>
+			<desc resKey="energymeter_powerfactorl3"/>
+		</feature>
+
+		<feature default="0" get="true" index="25" name="ActivePowerHighThresholdL1" set="true" type="num" unit="W">
+			<hint lang="pl" value="Górny próg mocy czynnej fazy L1. Po przekroczeniu wywoływane jest zdarzenie OnL1ActivePowerHigh. Wartość 0 wyłącza próg."/>
+			<hint lang="en" value="Upper active-power threshold for phase L1. Crossing it raises the OnL1ActivePowerHigh event. Value 0 disables the threshold."/>
+			<desc resKey="energymeter_powerhighthresholdl1"/>
+		</feature>
+		<feature default="0" get="true" index="26" name="ActivePowerLowThresholdL1" set="true" type="num" unit="W">
+			<hint lang="pl" value="Dolny próg mocy czynnej fazy L1. Po spadku poniżej wywoływane jest zdarzenie OnL1ActivePowerLow. Wartość 0 wyłącza próg."/>
+			<hint lang="en" value="Lower active-power threshold for phase L1. Dropping below it raises the OnL1ActivePowerLow event. Value 0 disables the threshold."/>
+			<desc resKey="energymeter_powerlowthresholdl1"/>
+		</feature>
+		<feature default="0" get="true" index="27" name="ActivePowerHighThresholdL2" set="true" type="num" unit="W">
+			<hint lang="pl" value="Górny próg mocy czynnej fazy L2. Po przekroczeniu wywoływane jest zdarzenie OnL2ActivePowerHigh. Wartość 0 wyłącza próg."/>
+			<hint lang="en" value="Upper active-power threshold for phase L2. Crossing it raises the OnL2ActivePowerHigh event. Value 0 disables the threshold."/>
+			<desc resKey="energymeter_powerhighthresholdl2"/>
+		</feature>
+		<feature default="0" get="true" index="28" name="ActivePowerLowThresholdL2" set="true" type="num" unit="W">
+			<hint lang="pl" value="Dolny próg mocy czynnej fazy L2. Po spadku poniżej wywoływane jest zdarzenie OnL2ActivePowerLow. Wartość 0 wyłącza próg."/>
+			<hint lang="en" value="Lower active-power threshold for phase L2. Dropping below it raises the OnL2ActivePowerLow event. Value 0 disables the threshold."/>
+			<desc resKey="energymeter_powerlowthresholdl2"/>
+		</feature>
+		<feature default="0" get="true" index="29" name="ActivePowerHighThresholdL3" set="true" type="num" unit="W">
+			<hint lang="pl" value="Górny próg mocy czynnej fazy L3. Po przekroczeniu wywoływane jest zdarzenie OnL3ActivePowerHigh. Wartość 0 wyłącza próg."/>
+			<hint lang="en" value="Upper active-power threshold for phase L3. Crossing it raises the OnL3ActivePowerHigh event. Value 0 disables the threshold."/>
+			<desc resKey="energymeter_powerhighthresholdl3"/>
+		</feature>
+		<feature default="0" get="true" index="30" name="ActivePowerLowThresholdL3" set="true" type="num" unit="W">
+			<hint lang="pl" value="Dolny próg mocy czynnej fazy L3. Po spadku poniżej wywoływane jest zdarzenie OnL3ActivePowerLow. Wartość 0 wyłącza próg."/>
+			<hint lang="en" value="Lower active-power threshold for phase L3. Dropping below it raises the OnL3ActivePowerLow event. Value 0 disables the threshold."/>
+			<desc resKey="energymeter_powerlowthresholdl3"/>
+		</feature>
+		<feature default="0" get="true" index="31" name="ActivePowerHighThreshold" set="true" type="num" unit="W">
+			<hint lang="pl" value="Górny próg całkowitej mocy czynnej. Po przekroczeniu wywoływane jest zdarzenie OnActivePowerHigh. Wartość 0 wyłącza próg."/>
+			<hint lang="en" value="Upper threshold for total active power. Crossing it raises the OnActivePowerHigh event. Value 0 disables the threshold."/>
+			<desc resKey="energymeter_totalpowerhighthreshold"/>
+		</feature>
+		<feature default="0" get="true" index="32" name="ActivePowerLowThreshold" set="true" type="num" unit="W">
+			<hint lang="pl" value="Dolny próg całkowitej mocy czynnej. Po spadku poniżej wywoływane jest zdarzenie OnActivePowerLow. Wartość 0 wyłącza próg."/>
+			<hint lang="en" value="Lower threshold for total active power. Dropping below it raises the OnActivePowerLow event. Value 0 disables the threshold."/>
+			<desc resKey="energymeter_totalpowerlowthreshold"/>
+		</feature>
+
+		<feature default="0" enum="0,1" get="true" index="33" name="StatisticStateEnergy" set="true" type="num" unit="">
+			<enum name="Off" resKey="energymeter_statisticstate_enum_off" value="0"/>
+			<enum name="On" resKey="energymeter_statisticstate_enum_on" value="1"/>
+			<hint lang="pl" value="Włącza raportowanie energii pobranej z sieci (import) do modułu statystyk. Statystyki wysyłane są cyklicznie co 15 minut."/>
+			<hint lang="en" value="Enables reporting of imported (drawn) energy to the statistics module. Statistics are sent every 15 minutes."/>
+			<desc resKey="energymeter_statisticstateenergy"/>
+		</feature>
+		<feature default="0" enum="0,1" get="true" index="34" name="StatisticStateExportedEnergy" set="true" type="num" unit="">
+			<enum name="Off" resKey="energymeter_statisticstate_enum_off" value="0"/>
+			<enum name="On" resKey="energymeter_statisticstate_enum_on" value="1"/>
+			<hint lang="pl" value="Włącza raportowanie energii oddanej do sieci (eksport) do modułu statystyk. Statystyki wysyłane są cyklicznie co 15 minut."/>
+			<hint lang="en" value="Enables reporting of exported energy to the statistics module. Statistics are sent every 15 minutes."/>
+			<desc resKey="energymeter_statisticstateexportedenergy"/>
+		</feature>
+	</features>
+	<methods>
+		<method call="set" index="0" name="SetIpAddress" return="void">
+			<param name="IpAddress" type="str" unit=""/>
+			<hint lang="pl" value="Ustawia adres IP licznika. Powoduje ponowne nawiązanie połączenia."/>
+			<hint lang="en" value="Sets the meter IP address. Forces the connection to be re-established."/>
+			<desc resKey="energymeter_setipaddress"/>
+		</method>
+		<method call="set" index="1" name="SetPort" return="void">
+			<param name="Port" range="1-65535" type="num" unit=""/>
+			<hint lang="pl" value="Ustawia port TCP licznika. Powoduje ponowne nawiązanie połączenia."/>
+			<hint lang="en" value="Sets the meter TCP port. Forces the connection to be re-established."/>
+			<desc resKey="energymeter_setport"/>
+		</method>
+		<method call="set" index="2" name="SetDeviceAddress" return="void">
+			<param name="DeviceAddress" range="1-247" type="num" unit=""/>
+			<hint lang="pl" value="Ustawia adres Modbus (unit id) licznika."/>
+			<hint lang="en" value="Sets the meter's Modbus device address (unit id)."/>
+			<desc resKey="energymeter_setunit"/>
+		</method>
+		<method call="set" index="3" name="SetRefreshInterval" return="void">
+			<param name="RefreshInterval" range="500-3600000" type="num" unit="ms"/>
+			<hint lang="pl" value="Ustawia okres cyklicznego odpytywania licznika (ms)."/>
+			<hint lang="en" value="Sets the meter polling interval (ms)."/>
+			<desc resKey="energymeter_setrefreshinterval"/>
+		</method>
+
+		<method call="set" index="25" name="SetActivePowerHighThresholdL1" return="void">
+			<param name="ActivePowerHighThresholdL1" type="num" unit="W"/>
+			<hint lang="pl" value="Ustawia górny próg mocy czynnej fazy L1 (0 = próg wyłączony)."/>
+			<hint lang="en" value="Sets the upper active-power threshold for phase L1 (0 = disabled)."/>
+			<desc resKey="energymeter_powerhighthresholdl1"/>
+		</method>
+		<method call="set" index="26" name="SetActivePowerLowThresholdL1" return="void">
+			<param name="ActivePowerLowThresholdL1" type="num" unit="W"/>
+			<hint lang="pl" value="Ustawia dolny próg mocy czynnej fazy L1 (0 = próg wyłączony)."/>
+			<hint lang="en" value="Sets the lower active-power threshold for phase L1 (0 = disabled)."/>
+			<desc resKey="energymeter_powerlowthresholdl1"/>
+		</method>
+		<method call="set" index="27" name="SetActivePowerHighThresholdL2" return="void">
+			<param name="ActivePowerHighThresholdL2" type="num" unit="W"/>
+			<hint lang="pl" value="Ustawia górny próg mocy czynnej fazy L2 (0 = próg wyłączony)."/>
+			<hint lang="en" value="Sets the upper active-power threshold for phase L2 (0 = disabled)."/>
+			<desc resKey="energymeter_powerhighthresholdl2"/>
+		</method>
+		<method call="set" index="28" name="SetActivePowerLowThresholdL2" return="void">
+			<param name="ActivePowerLowThresholdL2" type="num" unit="W"/>
+			<hint lang="pl" value="Ustawia dolny próg mocy czynnej fazy L2 (0 = próg wyłączony)."/>
+			<hint lang="en" value="Sets the lower active-power threshold for phase L2 (0 = disabled)."/>
+			<desc resKey="energymeter_powerlowthresholdl2"/>
+		</method>
+		<method call="set" index="29" name="SetActivePowerHighThresholdL3" return="void">
+			<param name="ActivePowerHighThresholdL3" type="num" unit="W"/>
+			<hint lang="pl" value="Ustawia górny próg mocy czynnej fazy L3 (0 = próg wyłączony)."/>
+			<hint lang="en" value="Sets the upper active-power threshold for phase L3 (0 = disabled)."/>
+			<desc resKey="energymeter_powerhighthresholdl3"/>
+		</method>
+		<method call="set" index="30" name="SetActivePowerLowThresholdL3" return="void">
+			<param name="ActivePowerLowThresholdL3" type="num" unit="W"/>
+			<hint lang="pl" value="Ustawia dolny próg mocy czynnej fazy L3 (0 = próg wyłączony)."/>
+			<hint lang="en" value="Sets the lower active-power threshold for phase L3 (0 = disabled)."/>
+			<desc resKey="energymeter_powerlowthresholdl3"/>
+		</method>
+		<method call="set" index="31" name="SetActivePowerHighThreshold" return="void">
+			<param name="ActivePowerHighThreshold" type="num" unit="W"/>
+			<hint lang="pl" value="Ustawia górny próg całkowitej mocy czynnej (0 = próg wyłączony)."/>
+			<hint lang="en" value="Sets the upper threshold for total active power (0 = disabled)."/>
+			<desc resKey="energymeter_totalpowerhighthreshold"/>
+		</method>
+		<method call="set" index="32" name="SetActivePowerLowThreshold" return="void">
+			<param name="ActivePowerLowThreshold" type="num" unit="W"/>
+			<hint lang="pl" value="Ustawia dolny próg całkowitej mocy czynnej (0 = próg wyłączony)."/>
+			<hint lang="en" value="Sets the lower threshold for total active power (0 = disabled)."/>
+			<desc resKey="energymeter_totalpowerlowthreshold"/>
+		</method>
+		<method call="set" index="33" name="SetStatisticStateEnergy" return="void" visible="false">
+			<param enum="0,1" name="StatisticStateEnergy" type="num" unit=""/>
+			<hint lang="pl" value="Włącza / wyłącza statystyki energii pobranej (import)."/>
+			<hint lang="en" value="Enables / disables statistics of imported energy."/>
+			<desc resKey="energymeter_statisticstateenergy"/>
+		</method>
+		<method call="set" index="34" name="SetStatisticStateExportedEnergy" return="void" visible="false">
+			<param enum="0,1" name="StatisticStateExportedEnergy" type="num" unit=""/>
+			<hint lang="pl" value="Włącza / wyłącza statystyki energii oddanej (eksport)."/>
+			<hint lang="en" value="Enables / disables statistics of exported energy."/>
+			<desc resKey="energymeter_statisticstateexportedenergy"/>
+		</method>
+		<method call="execute" index="0" name="ReadNow" return="void">
+			<hint lang="pl" value="Wymusza natychmiastowy odczyt rejestrów licznika, bez czekania na kolejny cykl odpytywania."/>
+			<hint lang="en" value="Forces an immediate read of the meter registers without waiting for the next polling cycle."/>
+			<desc resKey="energymeter_readnow"/>
+		</method>
+	</methods>
+	<events>
+		<event address="0" name="OnValueChange">
+			<hint lang="pl" value="Zdarzenie wywoływane po każdym udanym odczycie, gdy którakolwiek z wartości pomiarowych uległa zmianie."/>
+			<hint lang="en" value="Raised after a successful read whenever any of the measured values has changed."/>
+			<desc resKey="energymeter_onvaluechange"/>
+		</event>
+		<event address="1" name="OnConnected">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie nawiązania połączenia z licznikiem."/>
+			<hint lang="en" value="Raised when the connection to the meter is established."/>
+			<desc resKey="energymeter_onconnected"/>
+		</event>
+		<event address="2" name="OnDisconnected">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie utraty połączenia z licznikiem."/>
+			<hint lang="en" value="Raised when the connection to the meter is lost."/>
+			<desc resKey="energymeter_ondisconnected"/>
+		</event>
+		<event address="3" name="OnError">
+			<hint lang="pl" value="Zdarzenie wywoływane przy błędzie komunikacji lub wyjątku Modbus. Szczegóły w cesze ErrorCode."/>
+			<hint lang="en" value="Raised on a communication error or Modbus exception. See the ErrorCode feature for details."/>
+			<desc resKey="energymeter_onerror"/>
+		</event>
+		<event address="4" name="OnL1ActivePowerHigh">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie przekroczenia górnego progu mocy czynnej fazy L1."/>
+			<hint lang="en" value="Raised when the active power of phase L1 rises above its upper threshold."/>
+			<desc resKey="energymeter_onl1powerhigh"/>
+		</event>
+		<event address="5" name="OnL1ActivePowerLow">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie spadku mocy czynnej fazy L1 poniżej progu dolnego."/>
+			<hint lang="en" value="Raised when the active power of phase L1 drops below its lower threshold."/>
+			<desc resKey="energymeter_onl1powerlow"/>
+		</event>
+		<event address="6" name="OnL2ActivePowerHigh">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie przekroczenia górnego progu mocy czynnej fazy L2."/>
+			<hint lang="en" value="Raised when the active power of phase L2 rises above its upper threshold."/>
+			<desc resKey="energymeter_onl2powerhigh"/>
+		</event>
+		<event address="7" name="OnL2ActivePowerLow">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie spadku mocy czynnej fazy L2 poniżej progu dolnego."/>
+			<hint lang="en" value="Raised when the active power of phase L2 drops below its lower threshold."/>
+			<desc resKey="energymeter_onl2powerlow"/>
+		</event>
+		<event address="8" name="OnL3ActivePowerHigh">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie przekroczenia górnego progu mocy czynnej fazy L3."/>
+			<hint lang="en" value="Raised when the active power of phase L3 rises above its upper threshold."/>
+			<desc resKey="energymeter_onl3powerhigh"/>
+		</event>
+		<event address="9" name="OnL3ActivePowerLow">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie spadku mocy czynnej fazy L3 poniżej progu dolnego."/>
+			<hint lang="en" value="Raised when the active power of phase L3 drops below its lower threshold."/>
+			<desc resKey="energymeter_onl3powerlow"/>
+		</event>
+		<event address="10" name="OnActivePowerHigh">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie przekroczenia górnego progu całkowitej mocy czynnej."/>
+			<hint lang="en" value="Raised when the total active power rises above its upper threshold."/>
+			<desc resKey="energymeter_ontotalpowerhigh"/>
+		</event>
+		<event address="11" name="OnActivePowerLow">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie spadku całkowitej mocy czynnej poniżej progu dolnego."/>
+			<hint lang="en" value="Raised when the total active power drops below its lower threshold."/>
+			<desc resKey="energymeter_ontotalpowerlow"/>
+		</event>
+		<event address="12" name="OnEnergyImportStarted">
+			<hint lang="pl" value="Zdarzenie wywoływane, gdy instalacja zaczyna pobierać energię z sieci (całkowita moc czynna staje się dodatnia)."/>
+			<hint lang="en" value="Raised when the installation starts drawing energy from the grid (total active power becomes positive)."/>
+			<desc resKey="energymeter_onenergyimportstarted"/>
+		</event>
+		<event address="13" name="OnEnergyImportStopped">
+			<hint lang="pl" value="Zdarzenie wywoływane, gdy instalacja przestaje pobierać energię z sieci (całkowita moc czynna przestaje być dodatnia)."/>
+			<hint lang="en" value="Raised when the installation stops drawing energy from the grid (total active power is no longer positive)."/>
+			<desc resKey="energymeter_onenergyimportstopped"/>
+		</event>
+		<event address="14" name="OnEnergyExportStarted">
+			<hint lang="pl" value="Zdarzenie wywoływane, gdy instalacja zaczyna oddawać energię do sieci (całkowita moc czynna staje się ujemna)."/>
+			<hint lang="en" value="Raised when the installation starts exporting energy to the grid (total active power becomes negative)."/>
+			<desc resKey="energymeter_onenergyexportstarted"/>
+		</event>
+		<event address="15" name="OnEnergyExportStopped">
+			<hint lang="pl" value="Zdarzenie wywoływane, gdy instalacja przestaje oddawać energię do sieci (całkowita moc czynna przestaje być ujemna)."/>
+			<hint lang="en" value="Raised when the installation stops exporting energy to the grid (total active power is no longer negative)."/>
+			<desc resKey="energymeter_onenergyexportstopped"/>
+		</event>
+	</events>
+</object>

@@ -23,14 +23,6 @@ function hexInt(hexStr: string): number {
   return parseInt(hexStr, 16);
 }
 
-function createCluKeyFromNode(clu: XmlNode): string {
-  const hwType = hexInt((clu['@_hardwareType'] as string | undefined) ?? '0');
-  const hwVer = hexInt((clu['@_hardwareVersion'] as string | undefined) ?? '0');
-  const fwType = hexInt((clu['@_firmwareType'] as string | undefined) ?? '0');
-  const fwVer = hexInt((clu['@_firmwareVersion'] as string | undefined) ?? '0');
-  return createKey(hwType >>> 0, hwVer, fwType, fwVer);
-}
-
 function createCluKeyFromParsed(clu: ParsedClu): string {
   const hwType = hexInt(clu.hardwareType ?? '0');
   const hwVer = hexInt(clu.hardwareVersion ?? '0');
@@ -52,14 +44,6 @@ function createCluKeyFromParams(hardwareType: number, hardwareVersion: number, f
 
 function createModuleKey(hardwareType: number, firmwareType: number, firmwareVersion: number): string {
   return 'MOD:' + createKey(hardwareType, 1, firmwareType, firmwareVersion);
-}
-
-function createModuleKeyFromNode(module: XmlNode): string {
-  const typeId = hexInt((module['@_typeId'] as string | undefined) ?? '0');
-  const firmware = module['firmware'] as XmlNode | undefined;
-  const fwTypeId = hexInt((firmware?.['@_typeId'] as string | undefined) ?? '0');
-  const fwVersion = parseInt((firmware?.['@_version'] as string | undefined) ?? '0', 16);
-  return createModuleKey(typeId, fwTypeId, fwVersion);
 }
 
 function createObjectVersionKey(version: number | string): string {

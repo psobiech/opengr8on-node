@@ -4,8 +4,17 @@
   "description": "CLU protocol over UDP - Node.js port of opengr8on lib/common",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client-entry.d.ts",
+      "default": "./dist/client-entry.js"
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "tfbus-monitor": "./bin/tfbus-monitor.js",
@@ -24,7 +33,7 @@
   "scripts": {
     "build": "tsc",
     "prune": "rm -rf dist node_modules",
-    "test": "node --test --test-timeout=10000 'test/CipherKey.test.js' 'test/clu/**/*.test.js' 'test/commands/**/*.test.js' 'test/device/**/*.test.js' 'test/parsers/CLUDataTypeEnum.test.js' 'test/parsers/enums.test.js' 'test/tfbus/**/*.test.js' 'test/util/**/*.test.js' 'test/vclu/**/*.test.js'",
+    "test": "node --test --test-timeout=10000 'test/CipherKey.test.js' 'test/client.test.js' 'test/clu/**/*.test.js' 'test/commands/**/*.test.js' 'test/device/**/*.test.js' 'test/parsers/CLUDataTypeEnum.test.js' 'test/parsers/enums.test.js' 'test/parsers/OmpProject.test.js' 'test/tfbus/**/*.test.js' 'test/util/**/*.test.js' 'test/vclu/**/*.test.js'",
     "test:full": "node --test --test-timeout=10000 'test/**/*.test.js'"
   },
   "dependencies": {

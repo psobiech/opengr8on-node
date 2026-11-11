@@ -48,6 +48,16 @@ Dowolny izolowany konwerter USB-RS485 powinien działać (np. na chipie CH340, C
 npm ci
 ```
 
+### Użycie jako biblioteki
+
+`opengr8on-node/client` to wejście tylko po stronie klienta (UDP/TFTP do CLU, `.omp`, XML-e
+interfejsów). Nie ładuje `tfbus` (serialport), `vclu` (wasmoon, mqtt) ani serwerów MCP, więc nadaje
+się do bundlowania (np. rozszerzenie VS Code). Zależności: `fast-xml-parser`, `adm-zip`.
+
+```ts
+import { CLUClient, DiscoverCLUsCommand, readProjectClus } from 'opengr8on-node/client';
+```
+
 ### Narzędzie `tfbus-monitor`
 
 Nasłuchuje lub aktywnie skanuje magistralę TFBUS. Domyślnie działa w **trybie pasywnym** — tylko nasłuch, bez transmisji.
@@ -295,6 +305,16 @@ Any isolated USB-RS485 adapter works (CH340, CP2102, FT232-based, etc.). The por
 
 ```bash
 npm ci
+```
+
+### Library use
+
+`opengr8on-node/client` is a client-only entry point (UDP/TFTP to CLUs, `.omp` projects, interface
+XMLs). It does not load `tfbus` (serialport), `vclu` (wasmoon, mqtt) or the MCP servers, so it can
+be bundled (e.g. into a VS Code extension). Runtime deps: `fast-xml-parser`, `adm-zip`.
+
+```ts
+import { CLUClient, DiscoverCLUsCommand, readProjectClus } from 'opengr8on-node/client';
 ```
 
 ### `tfbus-monitor`

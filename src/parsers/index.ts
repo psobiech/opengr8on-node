@@ -7,6 +7,8 @@ export { SpecificObjectClass, specificObjectClassFrom } from './omp/system/speci
 export { SpecificObjectType, specificObjectTypeFrom } from './omp/system/specificObjects/SpecificObjectType.js';
 export { readProjectCipherKey, readAllObjects, readTFBusModules } from './omp/OmpReader.js';
 export type { TFBusModuleInfo, TFBusIOInfo, ParsedSpecificObject } from './omp/OmpReader.js';
+export { readOmpProject, readOmpDiagnostics } from './omp/OmpProject.js';
+export type { OmpProject, OmpClu, OmpIo, OmpModule, OmpFeature, OmpEvent, OmpScript } from './omp/OmpProject.js';
 export { transcribeModules, loadProperties } from './interfaces/transcribeModules.js';
 export type { TranscribeOptions, TranscribeResult } from './interfaces/transcribeModules.js';
 export type { ModuleTranscript, ModuleEntry, ModuleObject, Feature, Method, Event, EnumValue, MethodParam } from './interfaces/ModuleTranscript.js';

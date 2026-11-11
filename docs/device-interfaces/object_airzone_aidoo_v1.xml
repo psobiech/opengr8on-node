@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<object class="74" name="AirzoneAidoo" version="1">
+	<features>
+		<feature default="0.0.0.0" get="true" index="0" name="IpAddress" set="true" type="str" unit="">
+			<hint lang="pl" value="Adres IP bramki Airzone Aidoo Pro w sieci Modbus TCP. Zmiana wartości powoduje ponowne nawiązanie połączenia."/>
+			<hint lang="en" value="IP address of the Airzone Aidoo Pro gateway on the Modbus TCP network. Changing it forces the connection to be re-established."/>
+			<desc resKey="airzone_aidoo_ipaddress"/>
+		</feature>
+		<feature default="502" get="true" index="1" name="Port" range="1-65535" set="true" type="num" unit="">
+			<hint lang="pl" value="Port TCP serwera Modbus w bramce (standardowo 502). Zmiana wartości powoduje ponowne nawiązanie połączenia."/>
+			<hint lang="en" value="TCP port of the gateway's Modbus server (502 by default). Changing it forces the connection to be re-established."/>
+			<desc resKey="airzone_aidoo_port"/>
+		</feature>
+		<feature default="1" get="true" index="2" name="DeviceAddress" range="1-247" set="true" type="num" unit="">
+			<hint lang="pl" value="Adres urządzenia Modbus (unit id) w zakresie 1-247. Musi być zgodny z adresem ustawionym w bramce Aidoo."/>
+			<hint lang="en" value="Modbus device address (unit id), range 1-247. Must match the address configured in the Aidoo gateway."/>
+			<desc resKey="airzone_aidoo_unit"/>
+		</feature>
+		<feature default="5000" get="true" index="3" name="RefreshInterval" range="1000-3600000" set="true" type="num" unit="ms">
+			<hint lang="pl" value="Okres cyklicznego odpytywania bramki w milisekundach. Co ten czas odświeżane są odczyty stanu klimatyzatora.&#13;0 - odświeżanie wyłączone: odczyt tylko przez ReadNow i po zapisie (Set*), bez ponawiania połączenia po błędzie.&#13;Po błędzie komunikacji kolejne próby co 1, 2, 4 ... s, maksymalnie co 300 s. ReadNow wymusza próbę od razu."/>
+			<hint lang="en" value="Gateway polling interval in milliseconds. The air-conditioner state is refreshed on each cycle.&#13;0 - refresh disabled: reads only on ReadNow and after a write (Set*), no reconnect retries after an error.&#13;After a communication error further attempts follow after 1, 2, 4 ... s, at most every 300 s. ReadNow forces an attempt immediately."/>
+			<desc resKey="airzone_aidoo_refreshinterval"/>
+		</feature>
+
+		<feature enum="0,1" get="true" index="4" name="Status" set="false" type="num" unit="">
+			<enum name="Disconnected" resKey="airzone_aidoo_status_enum_disconnected" value="0"/>
+			<enum name="Connected" resKey="airzone_aidoo_status_enum_connected" value="1"/>
+			<hint lang="pl" value="Stan połączenia z bramką:&#13;0 - rozłączony: po starcie do pierwszego połączenia, gdy adres IP nie jest ustawiony, po zmianie IP lub portu, przy błędzie połączenia lub transportu (przyczyna w ErrorCode)&#13;1 - połączony: połączenie TCP nawiązane, także gdy bramka odpowiada wyjątkiem Modbus lub nie było jeszcze odczytu"/>
+			<hint lang="en" value="Connection state of the gateway:&#13;0 - disconnected: after start until the first connection, when no IP address is set, after an IP or port change, on a connection or transport error (cause in ErrorCode)&#13;1 - connected: TCP connection established, also when the gateway answers with a Modbus exception or no read has completed yet"/>
+			<desc resKey="airzone_aidoo_status"/>
+		</feature>
+		<feature get="true" index="5" name="ErrorCode" set="false" type="num" unit="">
+			<hint lang="pl" value="Kod ostatniego błędu komunikacji:&#13;0 - OK&#13;&gt;0 - kod wyjątku Modbus zwrócony przez bramkę&#13;-1 - błąd transportu / niepoprawna ramka&#13;-7 - błąd nawiązania połączenia"/>
+			<hint lang="en" value="Last communication error code:&#13;0 - OK&#13;&gt;0 - Modbus exception code returned by the gateway&#13;-1 - transport error / malformed frame&#13;-7 - connection error"/>
+			<desc resKey="airzone_aidoo_errorcode"/>
+		</feature>
+
+		<feature enum="0,1" get="true" index="6" name="State" set="false" type="num" unit="">
+			<enum name="Off" resKey="airzone_aidoo_state_enum_off" value="0"/>
+			<enum name="On" resKey="airzone_aidoo_state_enum_on" value="1"/>
+			<hint lang="pl" value="Włączenie / wyłączenie jednostki klimatyzacyjnej:&#13;0 - wyłączona&#13;1 - włączona&#13;Puste przed pierwszym odczytem z jednostki; po utracie komunikacji ostatnia poprawna wartość."/>
+			<hint lang="en" value="Turns the air-conditioning unit on or off:&#13;0 - off&#13;1 - on&#13;Empty before the first read from the unit; after a communication loss the last valid value."/>
+			<desc resKey="airzone_aidoo_state"/>
+		</feature>
+		<feature enum="0,1,2,3,4" get="true" index="7" name="Mode" set="false" type="num" unit="">
+			<enum name="Cooling" resKey="airzone_aidoo_mode_enum_cooling" value="0"/>
+			<enum name="Heating" resKey="airzone_aidoo_mode_enum_heating" value="1"/>
+			<enum name="Ventilation" resKey="airzone_aidoo_mode_enum_ventilation" value="2"/>
+			<enum name="Dry" resKey="airzone_aidoo_mode_enum_dry" value="3"/>
+			<enum name="Auto" resKey="airzone_aidoo_mode_enum_auto" value="4"/>
+			<hint lang="pl" value="Tryb pracy jednostki:&#13;0 - Chłodzenie&#13;1 - Grzanie&#13;2 - Wentylacja&#13;3 - Osuszanie&#13;4 - Auto&#13;Dostępność trybów zależy od jednostki (patrz SupportedModes).&#13;Puste przed pierwszym odczytem z jednostki; po utracie komunikacji ostatnia poprawna wartość."/>
+			<hint lang="en" value="Unit operation mode:&#13;0 - Cooling&#13;1 - Heating&#13;2 - Ventilation&#13;3 - Dry&#13;4 - Auto&#13;Available modes depend on the unit (see SupportedModes).&#13;Empty before the first read from the unit; after a communication loss the last valid value."/>
+			<desc resKey="airzone_aidoo_mode"/>
+		</feature>
+		<feature enum="0,1,2,3,4,5,6,7" get="true" index="8" name="FanSpeed" set="false" type="num" unit="">
+			<enum name="Auto" resKey="airzone_aidoo_fanspeed_enum_auto" value="0"/>
+			<enum name="VeryLow" resKey="airzone_aidoo_fanspeed_enum_verylow" value="1"/>
+			<enum name="Low" resKey="airzone_aidoo_fanspeed_enum_low" value="2"/>
+			<enum name="MediumLow" resKey="airzone_aidoo_fanspeed_enum_mediumlow" value="3"/>
+			<enum name="Medium" resKey="airzone_aidoo_fanspeed_enum_medium" value="4"/>
+			<enum name="MediumHigh" resKey="airzone_aidoo_fanspeed_enum_mediumhigh" value="5"/>
+			<enum name="High" resKey="airzone_aidoo_fanspeed_enum_high" value="6"/>
+			<enum name="VeryHigh" resKey="airzone_aidoo_fanspeed_enum_veryhigh" value="7"/>
+			<hint lang="pl" value="Prędkość wentylatora:&#13;0 - Auto&#13;1 - Bardzo niska&#13;2 - Niska&#13;3 - Średnio-niska&#13;4 - Średnia&#13;5 - Średnio-wysoka&#13;6 - Wysoka&#13;7 - Bardzo wysoka&#13;Dostępność prędkości zależy od jednostki (patrz SupportedFanSpeeds).&#13;Puste przed pierwszym odczytem z jednostki; po utracie komunikacji ostatnia poprawna wartość."/>
+			<hint lang="en" value="Fan speed:&#13;0 - Auto&#13;1 - Very low&#13;2 - Low&#13;3 - Medium-low&#13;4 - Medium&#13;5 - Medium-high&#13;6 - High&#13;7 - Very high&#13;Available speeds depend on the unit (see SupportedFanSpeeds).&#13;Empty before the first read from the unit; after a communication loss the last valid value."/>
+			<desc resKey="airzone_aidoo_fanspeed"/>
+		</feature>
+		<feature get="true" index="9" name="TargetTemp" range="15-30" set="false" type="num" unit="&#176;C">
+			<hint lang="pl" value="Zadana temperatura jednostki klimatyzacyjnej w °C. Klimatyzator musi być ustawiony w °C.&#13;Puste przed pierwszym odczytem z jednostki; po utracie komunikacji ostatnia poprawna wartość."/>
+			<hint lang="en" value="Air-conditioning unit setpoint temperature in °C. The unit must be set to °C.&#13;Empty before the first read from the unit; after a communication loss the last valid value."/>
+			<desc resKey="airzone_aidoo_targettemp"/>
+		</feature>
+		<feature get="true" index="10" name="RoomTemp" set="false" type="num" unit="&#176;C">
+			<hint lang="pl" value="Aktualna temperatura pomieszczenia (odczyt z jednostki) w °C. Klimatyzator musi być ustawiony w °C.&#13;Puste przed pierwszym odczytem z jednostki; po utracie komunikacji ostatnia poprawna wartość."/>
+			<hint lang="en" value="Current room temperature reported by the unit, in °C. The unit must be set to °C.&#13;Empty before the first read from the unit; after a communication loss the last valid value."/>
+			<desc resKey="airzone_aidoo_roomtemp"/>
+		</feature>
+		<feature get="true" index="15" name="Humidity" set="false" type="num" unit="%">
+			<hint lang="pl" value="Wilgotność względna w pomieszczeniu (odczyt z jednostki), 0-100%. Puste gdy jednostka nie raportuje wilgotności.&#13;Puste przed pierwszym odczytem z jednostki; po utracie komunikacji ostatnia poprawna wartość."/>
+			<hint lang="en" value="Relative room humidity reported by the unit, 0-100%. Empty when the unit does not report humidity.&#13;Empty before the first read from the unit; after a communication loss the last valid value."/>
+			<desc resKey="airzone_aidoo_humidity"/>
+		</feature>
+
+		<feature get="true" index="11" name="SupportedModes" set="false" type="str" unit="">
+			<hint lang="pl" value="Lista trybów pracy obsługiwanych przez jednostkę (wartości cechy Mode, rozdzielone przecinkiem). - gdy jednostka nie raportuje."/>
+			<hint lang="en" value="Operation modes supported by the unit (Mode feature values, comma separated). - when the unit does not report them."/>
+			<desc resKey="airzone_aidoo_supportedmodes"/>
+		</feature>
+		<feature get="true" index="12" name="SupportedFanSpeeds" set="false" type="str" unit="">
+			<hint lang="pl" value="Lista prędkości wentylatora obsługiwanych przez jednostkę (wartości cechy FanSpeed, rozdzielone przecinkiem). - gdy jednostka nie raportuje."/>
+			<hint lang="en" value="Fan speeds supported by the unit (FanSpeed feature values, comma separated). - when the unit does not report them."/>
+			<desc resKey="airzone_aidoo_supportedfanspeeds"/>
+		</feature>
+		<feature get="true" index="13" name="SupportedVerticalLouvers" set="false" type="str" unit="">
+			<hint lang="pl" value="Lista pozycji żaluzji pionowych obsługiwanych przez jednostkę (wartości cechy VerticalLouver, rozdzielone przecinkiem). - gdy jednostka nie ma żaluzji pionowych."/>
+			<hint lang="en" value="Vertical louver positions supported by the unit (VerticalLouver feature values, comma separated). - when the unit has no vertical louvers."/>
+			<desc resKey="airzone_aidoo_supportedverticallouvers"/>
+		</feature>
+		<feature get="true" index="14" name="VerticalLouver" range="0-10" set="false" type="num" unit="">
+			<hint lang="pl" value="Pozycja żaluzji pionowych:&#13;0-7 - Pozycja&#13;8 - Auto&#13;9 - Oscylacja&#13;10 - Podwójna oscylacja&#13;Puste przed pierwszym odczytem z jednostki; po utracie komunikacji ostatnia poprawna wartość."/>
+			<hint lang="en" value="Vertical louver position:&#13;0-7 - Position&#13;8 - Auto&#13;9 - Oscillation&#13;10 - Double oscillation&#13;Empty before the first read from the unit; after a communication loss the last valid value."/>
+			<desc resKey="airzone_aidoo_verticallouver"/>
+		</feature>
+		<feature get="true" index="16" name="SupportedHorizontalLouvers" set="false" type="str" unit="">
+			<hint lang="pl" value="Lista pozycji żaluzji poziomych obsługiwanych przez jednostkę (wartości cechy HorizontalLouver, rozdzielone przecinkiem). - gdy jednostka nie ma żaluzji poziomych."/>
+			<hint lang="en" value="Horizontal louver positions supported by the unit (HorizontalLouver feature values, comma separated). - when the unit has no horizontal louvers."/>
+			<desc resKey="airzone_aidoo_supportedhorizontallouvers"/>
+		</feature>
+		<feature get="true" index="17" name="HorizontalLouver" range="0-10" set="false" type="num" unit="">
+			<hint lang="pl" value="Pozycja żaluzji poziomych:&#13;0-7 - Pozycja&#13;8 - Auto&#13;9 - Oscylacja&#13;10 - Podwójna oscylacja&#13;Puste przed pierwszym odczytem z jednostki; po utracie komunikacji ostatnia poprawna wartość."/>
+			<hint lang="en" value="Horizontal louver position:&#13;0-7 - Position&#13;8 - Auto&#13;9 - Oscillation&#13;10 - Double oscillation&#13;Empty before the first read from the unit; after a communication loss the last valid value."/>
+			<desc resKey="airzone_aidoo_horizontallouver"/>
+		</feature>
+		<feature get="true" index="18" name="UnitError" set="false" type="str" unit="">
+			<hint lang="pl" value="Kod błędu zgłaszany przez jednostkę klimatyzacyjną (np. E-04), w formacie producenta. Puste gdy brak błędu."/>
+			<hint lang="en" value="Error code reported by the air-conditioning unit (e.g. E-04), in the manufacturer's format. Empty when there is no error."/>
+			<desc resKey="airzone_aidoo_uniterror"/>
+		</feature>
+	</features>
+	<methods>
+		<method call="set" index="0" name="SetIpAddress" return="void">
+			<param name="IpAddress" type="str" unit=""/>
+			<hint lang="pl" value="Ustawia adres IP bramki. Powoduje ponowne nawiązanie połączenia."/>
+			<hint lang="en" value="Sets the gateway IP address. Forces the connection to be re-established."/>
+			<desc resKey="airzone_aidoo_setipaddress"/>
+		</method>
+		<method call="set" index="1" name="SetPort" return="void">
+			<param name="Port" range="1-65535" type="num" unit=""/>
+			<hint lang="pl" value="Ustawia port TCP bramki. Powoduje ponowne nawiązanie połączenia."/>
+			<hint lang="en" value="Sets the gateway TCP port. Forces the connection to be re-established."/>
+			<desc resKey="airzone_aidoo_setport"/>
+		</method>
+		<method call="set" index="2" name="SetDeviceAddress" return="void">
+			<param name="DeviceAddress" range="1-247" type="num" unit=""/>
+			<hint lang="pl" value="Ustawia adres Modbus (unit id) bramki."/>
+			<hint lang="en" value="Sets the gateway's Modbus device address (unit id)."/>
+			<desc resKey="airzone_aidoo_setunit"/>
+		</method>
+		<method call="set" index="3" name="SetRefreshInterval" return="void">
+			<param name="RefreshInterval" range="1000-3600000" type="num" unit="ms">
+				<parametrized name="Time"/>
+				<parametrized name="Disabled" type="num" value="0"/>
+			</param>
+			<hint lang="pl" value="Ustawia okres cyklicznego odpytywania bramki (ms)."/>
+			<hint lang="en" value="Sets the gateway polling interval (ms)."/>
+			<desc resKey="airzone_aidoo_setrefreshinterval"/>
+		</method>
+		<method call="set" index="6" name="SetState" return="void">
+			<param enum="0,1" name="State" type="num" unit=""/>
+			<hint lang="pl" value="Włącza / wyłącza jednostkę klimatyzacyjną:&#13;0 - wyłącz&#13;1 - włącz"/>
+			<hint lang="en" value="Turns the air-conditioning unit on or off:&#13;0 - off&#13;1 - on"/>
+			<desc resKey="airzone_aidoo_setstate"/>
+		</method>
+		<method call="set" index="7" name="SetMode" return="void">
+			<param enum="0,1,2,3,4" name="Mode" type="num" unit=""/>
+			<hint lang="pl" value="Ustawia tryb pracy jednostki:&#13;0 - Chłodzenie&#13;1 - Grzanie&#13;2 - Wentylacja&#13;3 - Osuszanie&#13;4 - Auto"/>
+			<hint lang="en" value="Sets the unit operation mode:&#13;0 - Cooling&#13;1 - Heating&#13;2 - Ventilation&#13;3 - Dry&#13;4 - Auto"/>
+			<desc resKey="airzone_aidoo_setmode"/>
+		</method>
+		<method call="set" index="8" name="SetFanSpeed" return="void">
+			<param enum="0,1,2,3,4,5,6,7" name="FanSpeed" type="num" unit=""/>
+			<hint lang="pl" value="Ustawia prędkość wentylatora:&#13;0 - Auto&#13;1 - Bardzo niska&#13;2 - Niska&#13;3 - Średnio-niska&#13;4 - Średnia&#13;5 - Średnio-wysoka&#13;6 - Wysoka&#13;7 - Bardzo wysoka"/>
+			<hint lang="en" value="Sets the fan speed:&#13;0 - Auto&#13;1 - Very low&#13;2 - Low&#13;3 - Medium-low&#13;4 - Medium&#13;5 - Medium-high&#13;6 - High&#13;7 - Very high"/>
+			<desc resKey="airzone_aidoo_setfanspeed"/>
+		</method>
+		<method call="set" index="9" name="SetTargetTemp" return="void">
+			<param name="TargetTemp" range="15-30" type="num" unit="&#176;C"/>
+			<hint lang="pl" value="Ustawia zadaną temperaturę jednostki w °C. Klimatyzator musi być ustawiony w °C."/>
+			<hint lang="en" value="Sets the unit setpoint temperature in °C. The unit must be set to °C."/>
+			<desc resKey="airzone_aidoo_settargettemp"/>
+		</method>
+		<method call="set" index="14" name="SetVerticalLouver" return="void">
+			<param name="VerticalLouver" range="0-10" type="num" unit=""/>
+			<hint lang="pl" value="Ustawia pozycję żaluzji pionowych:&#13;0-7 - Pozycja&#13;8 - Auto&#13;9 - Oscylacja&#13;10 - Podwójna oscylacja"/>
+			<hint lang="en" value="Sets the vertical louver position:&#13;0-7 - Position&#13;8 - Auto&#13;9 - Oscillation&#13;10 - Double oscillation"/>
+			<desc resKey="airzone_aidoo_setverticallouver"/>
+		</method>
+		<method call="set" index="17" name="SetHorizontalLouver" return="void">
+			<param name="HorizontalLouver" range="0-10" type="num" unit=""/>
+			<hint lang="pl" value="Ustawia pozycję żaluzji poziomych:&#13;0-7 - Pozycja&#13;8 - Auto&#13;9 - Oscylacja&#13;10 - Podwójna oscylacja"/>
+			<hint lang="en" value="Sets the horizontal louver position:&#13;0-7 - Position&#13;8 - Auto&#13;9 - Oscillation&#13;10 - Double oscillation"/>
+			<desc resKey="airzone_aidoo_sethorizontallouver"/>
+		</method>
+		<method call="execute" index="0" name="ReadNow" return="void">
+			<hint lang="pl" value="Wymusza natychmiastowy odczyt stanu jednostki, bez czekania na kolejny cykl odpytywania."/>
+			<hint lang="en" value="Forces an immediate read of the unit state without waiting for the next polling cycle."/>
+			<desc resKey="airzone_aidoo_readnow"/>
+		</method>
+		<method call="execute" index="1" name="TurnOn" return="void">
+			<hint lang="pl" value="Włącza jednostkę klimatyzacyjną."/>
+			<hint lang="en" value="Turns the air-conditioning unit on."/>
+			<desc resKey="airzone_aidoo_turnon"/>
+		</method>
+		<method call="execute" index="2" name="TurnOff" return="void">
+			<hint lang="pl" value="Wyłącza jednostkę klimatyzacyjną."/>
+			<hint lang="en" value="Turns the air-conditioning unit off."/>
+			<desc resKey="airzone_aidoo_turnoff"/>
+		</method>
+	</methods>
+	<events>
+		<event address="0" name="OnValueChange">
+			<hint lang="pl" value="Zdarzenie wywoływane po każdym udanym odczycie, gdy którakolwiek z wartości stanu jednostki uległa zmianie."/>
+			<hint lang="en" value="Raised after a successful read whenever any of the unit state values has changed."/>
+			<desc resKey="airzone_aidoo_onvaluechange"/>
+		</event>
+		<event address="1" name="OnConnected">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie nawiązania połączenia z bramką."/>
+			<hint lang="en" value="Raised when the connection to the gateway is established."/>
+			<desc resKey="airzone_aidoo_onconnected"/>
+		</event>
+		<event address="2" name="OnDisconnected">
+			<hint lang="pl" value="Zdarzenie wywoływane w momencie utraty połączenia z bramką."/>
+			<hint lang="en" value="Raised when the connection to the gateway is lost."/>
+			<desc resKey="airzone_aidoo_ondisconnected"/>
+		</event>
+		<event address="3" name="OnError">
+			<hint lang="pl" value="Zdarzenie wywoływane po każdym odczycie zakończonym błędem komunikacji lub wyjątkiem Modbus, także gdy ErrorCode się nie zmienił. Szczegóły w cesze ErrorCode."/>
+			<hint lang="en" value="Raised after every poll that ends with a communication error or Modbus exception, also when ErrorCode does not change. See the ErrorCode feature for details."/>
+			<desc resKey="airzone_aidoo_onerror"/>
+		</event>
+		<event address="4" name="OnStateChange">
+			<hint lang="pl" value="Zdarzenie wywoływane, gdy zmieni się stan włączenia jednostki (On/Off)."/>
+			<hint lang="en" value="Raised when the unit on/off state changes."/>
+			<desc resKey="airzone_aidoo_onstatechange"/>
+		</event>
+		<event address="5" name="OnModeChange">
+			<hint lang="pl" value="Zdarzenie wywoływane, gdy zmieni się tryb pracy jednostki."/>
+			<hint lang="en" value="Raised when the unit operation mode changes."/>
+			<desc resKey="airzone_aidoo_onmodechange"/>
+		</event>
+	</events>
+</object>

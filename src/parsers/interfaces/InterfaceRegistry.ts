@@ -281,7 +281,8 @@ function parseObjectXml(content: string): ParsedObject | null {
   const parsed = PARSER.parse(content) as XmlNode;
   const obj = (parsed['object'] ?? parsed['CLUObject']) as XmlNode | undefined;
   if (!obj) return null;
-  const classNameNode = obj['className'];
+  // usually an attribute (<object class="120" className="GATE" ...>), sometimes a child element
+  const classNameNode = obj['@_className'] ?? obj['className'];
   const className = typeof classNameNode === 'string'
     ? classNameNode
     : ((classNameNode as XmlNode | undefined)?.['#text'] as string | undefined) ?? 'OBJECT';

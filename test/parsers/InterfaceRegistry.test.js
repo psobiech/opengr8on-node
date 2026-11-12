@@ -89,3 +89,13 @@ describe('InterfaceRegistry', () => {
     });
   });
 });
+
+describe('InterfaceRegistry (bundled docs/device-interfaces)', () => {
+  const bundled = InterfaceRegistry.fromDirectory(new URL('../../docs/device-interfaces', import.meta.url).pathname);
+  it('reads className from the attribute (OM declares these objects with GATE:new)', () => {
+    assert.equal(bundled.getObject('HttpListener', 2).className, 'GATE');
+    assert.equal(bundled.getObject('ModbusServer', 1).className, 'GATE');
+    assert.equal(bundled.getObject('Timer', 2).className, 'GATE');
+    assert.equal(bundled.getObject('Timer', 1).className, 'OBJECT');
+  });
+});

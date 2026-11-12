@@ -118,6 +118,19 @@ describe('readOmpProject', () => {
     assert.equal(readOmpProject(omp(trashed)).clus[0].isRemoved, 'true');
   });
 
+  it('reads script parameters (default, type, range) and user features (variables)', () => {
+    const xml = SYSTEM_XML
+      .replace('<parameters id="31"/>', '<parameters id="31"><ScriptParameter id="90"><name>dd</name><value>2</value><defaultValue>1</defaultValue><extendParamType id="91"><paramType>NUMBER</paramType><restrictionValues id="92"><string>1</string><string>10</string></restrictionValues><restrictionType>RANGE</restrictionType></extendParamType><unit/><divisor>1.0</divisor><optional>false</optional></ScriptParameter><ScriptParameter id="93"><name>txt</name><value>a</value><defaultValue>d</defaultValue><extendParamType id="94"><paramType>STRING</paramType></extendParamType><optional>false</optional></ScriptParameter></parameters>')
+      .replace('<embeddedFeaturesList id="15">', '<definedFeaturesList id="95"><DefinedFeature id="96"><name>cecha</name><hint/><visible>true</visible><type id="97"><paramType>STRING</paramType></type><defaultValue>aas</defaultValue><currentValue/><persist>true</persist></DefinedFeature></definedFeaturesList><embeddedFeaturesList id="15">');
+    assert.notEqual(xml, SYSTEM_XML);
+    const c = readOmpProject(omp(xml)).clus[0];
+    assert.deepEqual(c.scripts[0].parameters, [
+      { name: 'dd', defaultValue: '1', value: '2', paramType: 'NUMBER', restrictionType: 'RANGE', restrictionValues: ['1', '10'], optional: 'false' },
+      { name: 'txt', defaultValue: 'd', value: 'a', paramType: 'STRING', restrictionType: undefined, restrictionValues: [], optional: 'false' },
+    ]);
+    assert.deepEqual(c.userFeatures, [{ name: 'cecha', paramType: 'STRING', defaultValue: 'aas', persist: 'true' }]);
+  });
+
   it('reads script sources from the archive', () => {
     assert.deepEqual(readOmpProject(omp()).clus[0].scripts, [{ name: 'ELO', parameters: [], isManualEdit: 'true', source: 'print(1)\r\n' }]);
   });

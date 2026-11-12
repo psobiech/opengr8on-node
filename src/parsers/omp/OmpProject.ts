@@ -14,7 +14,7 @@ const PROPERTIES_FILE = 'properties.xml';
 
 type XmlNode = Record<string, unknown>;
 
-const ARRAY_TAGS = new Set(['TreeObject', 'Input', 'Output', 'EmbeddedFeature', 'Event', 'string', 'Script', 'InputOutputDefinition', 'HardwarePeripheryCLU']);
+const ARRAY_TAGS = new Set(['TreeObject', 'Input', 'Output', 'EmbeddedFeature', 'Event', 'string', 'Script', 'InputOutputDefinition', 'HardwarePeripheryCLU', 'ScriptParameter', 'DefinedFeature']);
 
 const PARSER = new XMLParser({
   ignoreAttributes: false,
@@ -73,9 +73,34 @@ export interface OmpIo {
   events: OmpEvent[];
 }
 
+/** Script parameter (OM 1.13: <ScriptParameter>), e.g. dd NUMBER default 1, RANGE 1..10. */
+export interface OmpScriptParameter {
+  name: string;
+  /** default used when the caller passes nil (rendered into USER.LUA --ARG / --BEGIN_INIT) */
+  defaultValue?: string;
+  /** value last set in OM's editor (not in OM output) */
+  value?: string;
+  /** STRING / NUMBER / BOOLEAN / ... */
+  paramType?: string;
+  /** e.g. RANGE with restrictionValues [min, max] */
+  restrictionType?: string;
+  restrictionValues: string[];
+  optional?: string;
+}
+
+/** CLU user feature ("variable", <DefinedFeature>): global Lua variable with a type and default. */
+export interface OmpUserFeature {
+  name: string;
+  /** STRING / NUMBER / BOOLEAN / OTHER */
+  paramType?: string;
+  defaultValue?: string;
+  /** "true": kept across restarts (OM.LUA: STO99999:execute(4, name) instead of 2) */
+  persist?: string;
+}
+
 export interface OmpScript {
   name: string;
-  parameters: string[];
+  parameters: OmpScriptParameter[];
   isManualEdit?: string;
   /** scripts/<CLU name>/<name>.lua from the archive, if present */
   source?: string;
@@ -117,6 +142,8 @@ export interface OmpClu {
   ios: OmpIo[];
   /** virtual objects, in project order (incl. removed ones, see isRemoved) */
   periphery: OmpPeriphery[];
+  /** user features ("variables") in project order */
+  userFeatures: OmpUserFeature[];
   scripts: OmpScript[];
 }
 
@@ -264,6 +291,37 @@ function periphery(list: unknown, refs: Refs): OmpPeriphery[] {
   }));
 }
 
+function scriptParameters(list: unknown, refs: Refs): OmpScriptParameter[] {
+  const holder = refs.resolve(list);
+  return toArray(holder?.['ScriptParameter'])
+    .map(p => refs.resolve(p))
+    .filter((p): p is XmlNode => !!p)
+    .map(p => {
+      const type = refs.resolve(p['extendParamType']);
+      return {
+        name: text(p['name']) ?? '',
+        defaultValue: text(p['defaultValue']),
+        value: text(p['value']),
+        paramType: text(type?.['paramType']),
+        restrictionType: text(type?.['restrictionType']),
+        restrictionValues: toArray(refs.resolve(type?.['restrictionValues'])?.['string']).map(v => text(v) ?? ''),
+        optional: text(p['optional']),
+      };
+    });
+}
+
+function userFeatures(list: unknown, refs: Refs): OmpUserFeature[] {
+  return toArray(refs.resolve(list)?.['DefinedFeature'])
+    .map(f => refs.resolve(f))
+    .filter((f): f is XmlNode => !!f)
+    .map(f => ({
+      name: text(f['name']) ?? '',
+      paramType: text(refs.resolve(f['type'])?.['paramType']),
+      defaultValue: text(f['defaultValue']),
+      persist: text(f['persist']),
+    }));
+}
+
 function scripts(list: unknown, refs: Refs, cluName: string, zip: AdmZip): OmpScript[] {
   const holder = refs.resolve(list);
   return toArray(holder?.['Script'])
@@ -274,7 +332,7 @@ function scripts(list: unknown, refs: Refs, cluName: string, zip: AdmZip): OmpSc
       const entry = zip.getEntry(`scripts/${cluName}/${name}.lua`);
       return {
         name,
-        parameters: toArray(refs.resolve(s['parameters'])?.['string']).map(p => text(p) ?? ''),
+        parameters: scriptParameters(s['parameters'], refs),
         isManualEdit: text(s['isManualEdit']),
         source: entry ? entry.getData().toString('utf8') : undefined,
       };
@@ -334,6 +392,7 @@ export function readOmpProject(source: string | Buffer): OmpProject {
       modules: toArray(refs.resolve(c['modulesList'])?.['InputOutputDefinition']).map(m => moduleOf(m, refs)).filter((m): m is OmpModule => !!m),
       ios: ios(c['iosList'], refs),
       periphery: periphery(c['peripheryList'], refs),
+      userFeatures: userFeatures(c['definedFeaturesList'], refs),
       scripts: scripts(c['scripts'], refs, name, zip),
     };
   });

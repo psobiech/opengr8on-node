@@ -12,8 +12,8 @@ Implementacja protokołu systemu Grenton w Node.js — biblioteka kliencka, wirt
 
 Ten projekt zawiera:
 - **Bibliotekę kliencką UDP** — odkrywanie CLU/GATE, wysyłanie komend, wykonywanie wyrażeń Lua
-- **Wirtualny CLU (vCLU)** — implementacja serwera CLU w Node.js;
-- **Narzędzia TFBUS** — monitor magistrali RS485 i interaktywny REPL do diagnostyki i sterowania modułami z linii polecen
+- **Wirtualny CLU (vCLU)** — implementacja serwera CLU w Node.js
+- **Narzędzia TFBUS** — monitor magistrali RS485 i interaktywny REPL do diagnostyki i sterowania modułami z linii poleceń
 - **Parser interfejsów urządzeń** — parsowanie plików XML opisujących API modułów i urządzeń CLU/GATE
 
 ### Inne projekty powiązane
@@ -38,7 +38,7 @@ Wersje angielskie: [COMMUNICATION.md](docs/COMMUNICATION.md) · [UDP.md](docs/UD
 
 ### Wymagania sprzętowe
 
-Do komunikacji z magistrala TFBUS potrzebny jest np. konwerter USB↔RS485 z **izolacją galwaniczną**.
+Do komunikacji z magistralą TFBUS potrzebny jest np. konwerter USB↔RS485 z **izolacją galwaniczną**.
 
 Przykładowe urządzenie: [KAMOD USB-RS485-ISO](https://kamami.pl/konwertery-rs485/1187349-kamod-usb-rs485-iso-konwerter-usb-rs485-z-izolacja-galwaniczna-5906623433391.html).
 
@@ -268,8 +268,7 @@ Wszelkie nazwy produktów, logotypy, marki i inne znaki towarowe lub obrazy wymi
 
 Korzystanie z tego oprogramowania może naruszać warunki gwarancji urządzeń Grenton. Użytkownik ponosi wyłączną odpowiedzialność za ocenę zgodności z warunkami gwarancji producenta przed użyciem tego oprogramowania z urządzeniami objętymi gwarancją.
 
-Oprogramowanie jest dostarczane w stanie „takim, jaki jest" (as-is), bez jakichkolwiek gwarancji, wyraźnych ani dorozumianych, w tym między innymi bez gwarancji przydatności handlowej, przydatności do określonego celu ani nienaruszania praw osób trzecich. O ile wyraźnie nie zaznaczono inaczej, osoba która powiązała utwór z niniejszą adnotacją nie udziela żadnych gwarancji dotyczących tego utworu i zrzeka się odpowiedzialności za wszelkie sposoby jego użycia, w najszerszym zakresie dopuszczalnym przez obowiązujące prawo.
-
+Oprogramowanie jest dostarczane w stanie „takim, jaki jest" (as-is), bez jakichkolwiek gwarancji, wyraźnych ani dorozumianych, w tym między innymi bez gwarancji przydatności handlowej, przydatności do określonego celu ani nienaruszania praw osób trzecich. O ile wyraźnie nie zaznaczono inaczej, osoba, która powiązała utwór z niniejszą adnotacją, nie udziela żadnych gwarancji dotyczących tego utworu i zrzeka się odpowiedzialności za wszelkie sposoby jego użycia, w najszerszym zakresie dopuszczalnym przez obowiązujące prawo.
 
 ---
 
@@ -281,7 +280,7 @@ Node.js implementation of the Grenton smart-home protocol — UDP client library
 
 This project provides:
 - **UDP client library** — CLU/GATE discovery, command dispatch, Lua expression execution
-- **Virtual CLU (vCLU)** — Node.js CLU server implementation;
+- **Virtual CLU (vCLU)** — Node.js CLU server implementation
 - **TFBUS tools** — RS485 bus monitor and interactive REPL for diagnostics and direct module control from the command line
 - **Device interface parser** — parses the XML files that describe the API of each CLU/GATE/module firmware version
 
@@ -492,7 +491,7 @@ Without `--output` the result goes to stdout.
 
 ---
 
-### Sister project
+### Sister projects
 
 [opengr8on](https://github.com/psobiech/opengr8on) — Java implementation of vCLU, more mature and better tested. If you need a stable virtual CLU, start there.
 

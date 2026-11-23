@@ -41,7 +41,7 @@ export class SerialTransport implements TFBusTransport {
   }
 
   close(): Promise<void> {
-    for (const w of this.#waiters) w(null);
+    for (const waiter of this.#waiters) waiter(null);
     this.#waiters = [];
     return new Promise((resolve) => this.#port.close(() => resolve()));
   }

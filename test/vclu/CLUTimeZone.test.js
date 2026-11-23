@@ -24,19 +24,19 @@ describe('CLUTimeZone', () => {
   });
 
   it('all IDs are valid IANA timezone strings', () => {
-    for (const tz of CLU_TIMEZONE_IDS) {
+    for (const timeZoneId of CLU_TIMEZONE_IDS) {
       assert.doesNotThrow(
-        () => new Intl.DateTimeFormat('en', { timeZone: tz }),
-        `Invalid IANA timezone: ${tz}`,
+        () => new Intl.DateTimeFormat('en', { timeZone: timeZoneId }),
+        `Invalid IANA timezone: ${timeZoneId}`,
       );
     }
   });
 
   it('all indices 0-22 return a string', () => {
     for (let i = 0; i <= 22; i++) {
-      const tz = cluTimeZoneId(i);
-      assert.equal(typeof tz, 'string');
-      assert.ok(tz.length > 0);
+      const timeZoneId = cluTimeZoneId(i);
+      assert.equal(typeof timeZoneId, 'string');
+      assert.ok(timeZoneId.length > 0);
     }
   });
 });

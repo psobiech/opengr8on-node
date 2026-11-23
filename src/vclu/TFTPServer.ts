@@ -24,133 +24,6 @@ const ERR_EXISTS      = 6;
 
 export type TFTPServerMode = 'GET_ONLY' | 'PUT_ONLY' | 'GET_AND_PUT' | 'GET_AND_REPLACE';
 
-function ack(block: number): Buffer {
-  const b = Buffer.allocUnsafe(4);
-  b.writeUInt16BE(PKT_ACK, 0);
-  b.writeUInt16BE(block & 0xffff, 2);
-  return b;
-}
-
-function data(block: number, chunk: Buffer): Buffer {
-  const b = Buffer.allocUnsafe(4 + chunk.length);
-  b.writeUInt16BE(PKT_DATA, 0);
-  b.writeUInt16BE(block & 0xffff, 2);
-  chunk.copy(b, 4);
-  return b;
-}
-
-function errPkt(code: number, msg: string): Buffer {
-  const msgBuf = Buffer.from(msg + '\0', 'ascii');
-  const b = Buffer.allocUnsafe(4 + msgBuf.length);
-  b.writeUInt16BE(PKT_ERROR, 0);
-  b.writeUInt16BE(code, 2);
-  msgBuf.copy(b, 4);
-  return b;
-}
-
-function parseReq(buf: Buffer): { filename: string; mode: string } {
-  let pos = 2;
-  const fnStart = pos;
-  while (pos < buf.length && buf[pos] !== 0) pos++;
-  const filename = buf.subarray(fnStart, pos).toString('ascii');
-  pos++;
-  const modeStart = pos;
-  while (pos < buf.length && buf[pos] !== 0) pos++;
-  const mode = buf.subarray(modeStart, pos).toString('ascii').toLowerCase();
-  return { filename, mode };
-}
-
-function netasciiToOctet(buf: Buffer): Buffer<ArrayBuffer> {
-  // \r\n → \n, \r\0 → \r  (RFC 783 NETASCII receive)
-  const out: number[] = [];
-  for (let i = 0; i < buf.length; i++) {
-    if (buf[i] === 0x0d) {
-      const next = buf[i + 1];
-      if (next === 0x0a) { out.push(0x0a); i++; }
-      else if (next === 0x00) { out.push(0x0d); i++; }
-      else { out.push(0x0d); }
-    } else {
-      out.push(buf[i]);
-    }
-  }
-  return Buffer.from(out) as Buffer<ArrayBuffer>;
-}
-
-function octetToNetascii(buf: Buffer): Buffer<ArrayBuffer> {
-  const out: number[] = [];
-  for (let i = 0; i < buf.length; i++) {
-    if (buf[i] === 0x0a) { out.push(0x0d, 0x0a); }
-    else if (buf[i] === 0x0d) { out.push(0x0d, 0x00); }
-    else { out.push(buf[i]); }
-  }
-  return Buffer.from(out) as Buffer<ArrayBuffer>;
-}
-
-function readFile(path: string): Promise<Buffer> {
-  return new Promise((res, rej) => {
-    const chunks: Buffer[] = [];
-    createReadStream(path)
-      .on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)))
-      .on('end', () => res(Buffer.concat(chunks)))
-      .on('error', rej);
-  });
-}
-
-function writeFile(path: string, buf: Buffer): Promise<void> {
-  return new Promise((res, rej) => {
-    const ws = createWriteStream(path);
-    ws.on('finish', res);
-    ws.on('error', rej);
-    ws.end(buf);
-  });
-}
-
-/** Receive one UDP packet from expectedAddr. Returns { msg, port }. */
-function recv(
-  sock: dgram.Socket,
-  timeoutMs: number,
-  expectedAddr: string,
-  clientPort: number | null,
-): Promise<{ msg: Buffer; port: number }> {
-  return new Promise((res, rej) => {
-    let settled = false;
-    const done = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      sock.removeListener('message', onMsg);
-      fn();
-    };
-    const timer = setTimeout(() => done(() => rej(new Error('timeout'))), timeoutMs);
-    const onMsg = (msg: Buffer, rinfo: dgram.RemoteInfo) => {
-      if (settled) return;
-      if (rinfo.address !== expectedAddr) {
-        sock.send(errPkt(ERR_UNKNOWN_TID, 'unknown TID'), rinfo.port, rinfo.address);
-        return;
-      }
-      // If clientPort known, enforce it
-      if (clientPort !== null && rinfo.port !== clientPort) {
-        sock.send(errPkt(ERR_UNKNOWN_TID, 'unknown TID'), rinfo.port, rinfo.address);
-        return;
-      }
-      done(() => res({ msg, port: rinfo.port }));
-    };
-    sock.on('message', onMsg);
-  });
-}
-
-function bindEphemeral(): Promise<dgram.Socket> {
-  return new Promise((res, rej) => {
-    const s = dgram.createSocket('udp4');
-    s.once('error', rej);
-    s.bind(0, () => {
-      s.removeAllListeners('error');
-      s.on('error', (e) => console.error('[TFTPServer] transfer socket error:', e));
-      res(s);
-    });
-  });
-}
-
 export class TFTPServer {
   private readonly _rootDirectory: string;
   private readonly _mode: TFTPServerMode;
@@ -170,39 +43,39 @@ export class TFTPServer {
   get port(): number { return this._port; }
 
   start(): Promise<void> {
-    return new Promise((res, rej) => {
-      const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-      this._socket = sock;
-      sock.once('error', rej);
-      sock.bind(this._port, () => {
-        this._port = (sock.address() as { port: number }).port;
-        sock.removeAllListeners('error');
-        sock.on('error', (e) => console.error('[TFTPServer] error:', e));
-        sock.on('message', (msg, rinfo) =>
-          this._onRequest(msg, rinfo.address, rinfo.port),
+    return new Promise((resolvePromise, rejectPromise) => {
+      const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+      this._socket = socket;
+      socket.once('error', rejectPromise);
+      socket.bind(this._port, () => {
+        this._port = (socket.address() as { port: number }).port;
+        socket.removeAllListeners('error');
+        socket.on('error', (error) => console.error('[TFTPServer] error:', error));
+        socket.on('message', (message, remoteInfo) =>
+          this._onRequest(message, remoteInfo.address, remoteInfo.port),
         );
-        res();
+        resolvePromise();
       });
     });
   }
+
+  close(): void { this.stop(); }
 
   stop(): void {
     this._socket?.close();
     this._socket = null;
   }
 
-  close(): void { this.stop(); }
-
-  private _onRequest(msg: Buffer, remoteAddr: string, remotePort: number): void {
-    if (msg.length < 4) return;
-    const opcode = msg.readUInt16BE(0);
+  private _onRequest(message: Buffer, remoteAddr: string, remotePort: number): void {
+    if (message.length < 4) return;
+    const opcode = message.readUInt16BE(0);
 
     if (opcode === PKT_RRQ) {
       if (this._mode === 'PUT_ONLY') {
         this._errorTo(remoteAddr, remotePort, ERR_ACCESS, 'server is write-only');
         return;
       }
-      const { filename, mode } = parseReq(msg);
+      const { filename, mode } = parseRequest(message);
       const filePath = this._resolvePath(filename);
       if (filePath == null) {
         this._errorTo(remoteAddr, remotePort, ERR_ACCESS, 'access denied');
@@ -219,7 +92,7 @@ export class TFTPServer {
         this._errorTo(remoteAddr, remotePort, ERR_ACCESS, 'server is read-only');
         return;
       }
-      const { filename, mode } = parseReq(msg);
+      const { filename, mode } = parseRequest(message);
       const filePath = this._resolvePath(filename);
       if (filePath == null) {
         this._errorTo(remoteAddr, remotePort, ERR_ACCESS, 'access denied');
@@ -233,22 +106,22 @@ export class TFTPServer {
     }
   }
 
+  private _errorTo(addr: string, port: number, code: number, message: string): void {
+    this._socket?.send(errorPacket(code, message), port, addr);
+  }
+
   /** Resolve a TFTP path within server root. Returns null if outside root. */
   private _resolvePath(filename: string): string | null {
     // Convert Windows path: a:\file.txt or a:/file.txt → a/file.txt
     let normalized = filename.replace(/^([a-z]):[\\\/]/i, '$1/').replace(/\\/g, '/');
     // Strip directory traversal attempts
-    normalized = normalized.split('/').filter((p) => p !== '..' && p !== '.').join('/');
+    normalized = normalized.split('/').filter((segment) => segment !== '..' && segment !== '.').join('/');
     normalized = normalized.replace(/^\/+/, '');
     const full = normalize(resolve(this._rootDirectory, normalized));
     if (full !== this._rootDirectory && !full.startsWith(this._rootDirectory + '/')) {
       return null;
     }
     return full;
-  }
-
-  private _errorTo(addr: string, port: number, code: number, msg: string): void {
-    this._socket?.send(errPkt(code, msg), port, addr);
   }
 
   /** RRQ: send file to client via ephemeral socket */
@@ -258,9 +131,10 @@ export class TFTPServer {
     filePath: string,
     mode: string,
   ): Promise<void> {
-    const sock = await bindEphemeral();
-    const send = (p: Buffer) =>
-      new Promise<void>((r, j) => sock.send(p, remotePort, remoteAddr, (e) => (e ? j(e) : r())));
+    const socket = await bindEphemeral();
+    const send = (packetBuffer: Buffer) =>
+      new Promise<void>((resolvePromise, rejectPromise) =>
+        socket.send(packetBuffer, remotePort, remoteAddr, (sendError) => (sendError ? rejectPromise(sendError) : resolvePromise())));
 
     try {
       let fileData = await readFile(filePath);
@@ -272,16 +146,16 @@ export class TFTPServer {
       for (let block = 1; block <= totalBlocks; block++) {
         const offset = (block - 1) * BLOCK_SIZE;
         const chunk = fileData.subarray(offset, Math.min(offset + BLOCK_SIZE, fileData.length));
-        const pkt = data(block, chunk);
+        const packet = dataPacket(block, chunk);
 
         let acked = false;
         for (let attempt = 0; attempt < MAX_RETRIES && !acked; attempt++) {
-          await send(pkt);
+          await send(packet);
           try {
-            const { msg } = await recv(sock, TIMEOUT_MS, remoteAddr, null);
+            const { message } = await receiveFrom(socket, TIMEOUT_MS, remoteAddr, null);
             if (
-              msg.readUInt16BE(0) === PKT_ACK &&
-              msg.readUInt16BE(2) === (block & 0xffff)
+              message.readUInt16BE(0) === PKT_ACK &&
+              message.readUInt16BE(2) === (block & 0xffff)
             ) {
               acked = true;
             }
@@ -291,15 +165,15 @@ export class TFTPServer {
           }
         }
         if (!acked) {
-          await send(errPkt(ERR_UNDEFINED, 'timeout waiting for ACK')).catch(() => {/* ignore */});
+          await send(errorPacket(ERR_UNDEFINED, 'timeout waiting for ACK')).catch(() => {/* ignore */});
           return;
         }
       }
-    } catch (e) {
-      console.error(`[TFTPServer] sendFile error (${filePath}):`, e);
-      await send(errPkt(ERR_UNDEFINED, 'server error')).catch(() => {/* ignore */});
+    } catch (error) {
+      console.error(`[TFTPServer] sendFile error (${filePath}):`, error);
+      await send(errorPacket(ERR_UNDEFINED, 'server error')).catch(() => {/* ignore */});
     } finally {
-      sock.close();
+      socket.close();
     }
   }
 
@@ -310,62 +184,63 @@ export class TFTPServer {
     filePath: string,
     mode: string,
   ): Promise<void> {
-    const sock = await bindEphemeral();
-    const send = (p: Buffer) =>
-      new Promise<void>((r, j) => sock.send(p, remotePort, remoteAddr, (e) => (e ? j(e) : r())));
+    const socket = await bindEphemeral();
+    const send = (packetBuffer: Buffer) =>
+      new Promise<void>((resolvePromise, rejectPromise) =>
+        socket.send(packetBuffer, remotePort, remoteAddr, (sendError) => (sendError ? rejectPromise(sendError) : resolvePromise())));
 
     const chunks: Buffer[] = [];
 
     try {
       // ACK 0 starts the transfer
-      await send(ack(0));
+      await send(ackPacket(0));
 
       let block = 1;
       let clientPort: number | null = null;
 
       for (;;) {
-        let pkt: Buffer | null = null;
-        for (let attempt = 0; attempt < MAX_RETRIES && pkt == null; attempt++) {
+        let packet: Buffer | null = null;
+        for (let attempt = 0; attempt < MAX_RETRIES && packet == null; attempt++) {
           try {
-            const r = await recv(sock, TIMEOUT_MS, remoteAddr, clientPort);
-            pkt = r.msg;
-            if (clientPort == null) clientPort = r.port;
+            const received = await receiveFrom(socket, TIMEOUT_MS, remoteAddr, clientPort);
+            packet = received.message;
+            if (clientPort == null) clientPort = received.port;
           } catch {
             // timeout — retransmit last ACK
-            await send(ack(block - 1)).catch(() => {/* ignore */});
+            await send(ackPacket(block - 1)).catch(() => {/* ignore */});
           }
         }
-        if (pkt == null) {
-          await send(errPkt(ERR_UNDEFINED, 'timeout')).catch(() => {/* ignore */});
+        if (packet == null) {
+          await send(errorPacket(ERR_UNDEFINED, 'timeout')).catch(() => {/* ignore */});
           return;
         }
 
-        const opcode = pkt.readUInt16BE(0);
+        const opcode = packet.readUInt16BE(0);
         if (opcode === PKT_ERROR) {
-          const code = pkt.readUInt16BE(2);
-          const msg = pkt.subarray(4, pkt.indexOf(0, 4)).toString('ascii');
-          console.error(`[TFTPServer] client error ${code}: ${msg}`);
+          const code = packet.readUInt16BE(2);
+          const message = packet.subarray(4, packet.indexOf(0, 4)).toString('ascii');
+          console.error(`[TFTPServer] client error ${code}: ${message}`);
           return;
         }
         if (opcode !== PKT_DATA) {
-          await send(errPkt(ERR_ILLEGAL, 'expected DATA packet')).catch(() => {/* ignore */});
+          await send(errorPacket(ERR_ILLEGAL, 'expected DATA packet')).catch(() => {/* ignore */});
           return;
         }
 
-        const pktBlock = pkt.readUInt16BE(2);
+        const packetBlock = packet.readUInt16BE(2);
         const expectedBlock = block & 0xffff;
 
-        if (pktBlock === expectedBlock) {
-          chunks.push(Buffer.from(pkt.subarray(4)));
-          await send(ack(block));
-          const done = pkt.length - 4 < BLOCK_SIZE;
+        if (packetBlock === expectedBlock) {
+          chunks.push(Buffer.from(packet.subarray(4)));
+          await send(ackPacket(block));
+          const isLastBlock = packet.length - 4 < BLOCK_SIZE;
           block++;
-          if (done) break;
-        } else if (pktBlock === ((block - 1) & 0xffff)) {
+          if (isLastBlock) break;
+        } else if (packetBlock === ((block - 1) & 0xffff)) {
           // duplicate — re-ack previous
-          await send(ack(block - 1));
+          await send(ackPacket(block - 1));
         } else {
-          await send(errPkt(ERR_ILLEGAL, 'unexpected block number')).catch(() => {/* ignore */});
+          await send(errorPacket(ERR_ILLEGAL, 'unexpected block number')).catch(() => {/* ignore */});
           return;
         }
       }
@@ -373,18 +248,145 @@ export class TFTPServer {
       let fileData = Buffer.concat(chunks);
       if (mode === 'netascii') fileData = netasciiToOctet(fileData);
 
-      const dir = dirname(filePath);
-      mkdirSync(dir, { recursive: true });
+      const directory = dirname(filePath);
+      mkdirSync(directory, { recursive: true });
 
-      const tmp = filePath + '.tmp.' + randomBytes(4).toString('hex');
-      await writeFile(tmp, fileData);
-      renameSync(tmp, filePath);
+      const temporaryPath = filePath + '.tmp.' + randomBytes(4).toString('hex');
+      await writeFile(temporaryPath, fileData);
+      renameSync(temporaryPath, filePath);
 
-    } catch (e) {
-      console.error(`[TFTPServer] receiveFile error (${filePath}):`, e);
-      await send(errPkt(ERR_UNDEFINED, 'server error')).catch(() => {/* ignore */});
+    } catch (error) {
+      console.error(`[TFTPServer] receiveFile error (${filePath}):`, error);
+      await send(errorPacket(ERR_UNDEFINED, 'server error')).catch(() => {/* ignore */});
     } finally {
-      sock.close();
+      socket.close();
     }
   }
+}
+
+function parseRequest(request: Buffer): { filename: string; mode: string } {
+  let position = 2;
+  const filenameStart = position;
+  while (position < request.length && request[position] !== 0) position++;
+  const filename = request.subarray(filenameStart, position).toString('ascii');
+  position++;
+  const modeStart = position;
+  while (position < request.length && request[position] !== 0) position++;
+  const mode = request.subarray(modeStart, position).toString('ascii').toLowerCase();
+  return { filename, mode };
+}
+
+function bindEphemeral(): Promise<dgram.Socket> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const socket = dgram.createSocket('udp4');
+    socket.once('error', rejectPromise);
+    socket.bind(0, () => {
+      socket.removeAllListeners('error');
+      socket.on('error', (error) => console.error('[TFTPServer] transfer socket error:', error));
+      resolvePromise(socket);
+    });
+  });
+}
+
+function readFile(path: string): Promise<Buffer> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const chunks: Buffer[] = [];
+    createReadStream(path)
+      .on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))
+      .on('end', () => resolvePromise(Buffer.concat(chunks)))
+      .on('error', rejectPromise);
+  });
+}
+
+function octetToNetascii(input: Buffer): Buffer<ArrayBuffer> {
+  const output: number[] = [];
+  for (let i = 0; i < input.length; i++) {
+    if (input[i] === 0x0a) { output.push(0x0d, 0x0a); }
+    else if (input[i] === 0x0d) { output.push(0x0d, 0x00); }
+    else { output.push(input[i]); }
+  }
+  return Buffer.from(output) as Buffer<ArrayBuffer>;
+}
+
+function dataPacket(block: number, chunk: Buffer): Buffer {
+  const packet = Buffer.allocUnsafe(4 + chunk.length);
+  packet.writeUInt16BE(PKT_DATA, 0);
+  packet.writeUInt16BE(block & 0xffff, 2);
+  chunk.copy(packet, 4);
+  return packet;
+}
+
+/** Receive one UDP packet from expectedAddr. Returns { message, port }. */
+function receiveFrom(
+  socket: dgram.Socket,
+  timeoutMs: number,
+  expectedAddr: string,
+  clientPort: number | null,
+): Promise<{ message: Buffer; port: number }> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    let settled = false;
+    const settle = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.removeListener('message', onMessage);
+      action();
+    };
+    const timer = setTimeout(() => settle(() => rejectPromise(new Error('timeout'))), timeoutMs);
+    const onMessage = (message: Buffer, remoteInfo: dgram.RemoteInfo) => {
+      if (settled) return;
+      if (remoteInfo.address !== expectedAddr) {
+        socket.send(errorPacket(ERR_UNKNOWN_TID, 'unknown TID'), remoteInfo.port, remoteInfo.address);
+        return;
+      }
+      // If clientPort known, enforce it
+      if (clientPort !== null && remoteInfo.port !== clientPort) {
+        socket.send(errorPacket(ERR_UNKNOWN_TID, 'unknown TID'), remoteInfo.port, remoteInfo.address);
+        return;
+      }
+      settle(() => resolvePromise({ message, port: remoteInfo.port }));
+    };
+    socket.on('message', onMessage);
+  });
+}
+
+function errorPacket(code: number, message: string): Buffer {
+  const messageBytes = Buffer.from(message + '\0', 'ascii');
+  const packet = Buffer.allocUnsafe(4 + messageBytes.length);
+  packet.writeUInt16BE(PKT_ERROR, 0);
+  packet.writeUInt16BE(code, 2);
+  messageBytes.copy(packet, 4);
+  return packet;
+}
+
+function ackPacket(block: number): Buffer {
+  const packet = Buffer.allocUnsafe(4);
+  packet.writeUInt16BE(PKT_ACK, 0);
+  packet.writeUInt16BE(block & 0xffff, 2);
+  return packet;
+}
+
+function netasciiToOctet(input: Buffer): Buffer<ArrayBuffer> {
+  // \r\n → \n, \r\0 → \r  (RFC 783 NETASCII receive)
+  const output: number[] = [];
+  for (let i = 0; i < input.length; i++) {
+    if (input[i] === 0x0d) {
+      const next = input[i + 1];
+      if (next === 0x0a) { output.push(0x0a); i++; }
+      else if (next === 0x00) { output.push(0x0d); i++; }
+      else { output.push(0x0d); }
+    } else {
+      output.push(input[i]);
+    }
+  }
+  return Buffer.from(output) as Buffer<ArrayBuffer>;
+}
+
+function writeFile(path: string, contents: Buffer): Promise<void> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const writeStream = createWriteStream(path);
+    writeStream.on('finish', resolvePromise);
+    writeStream.on('error', rejectPromise);
+    writeStream.end(contents);
+  });
 }

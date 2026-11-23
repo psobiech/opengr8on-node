@@ -2,15 +2,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSmartPanelResponse } from '../../dist/tfbus/StatusPollResponse.js';
 
-function makePayload({ buttonMask = 0, edgeMask = 0, lightRaw = 0 } = {}) {
-  const buf = Buffer.alloc(13, 0);
-  buf.writeUInt16LE(buttonMask, 0);
-  buf.writeUInt16LE(edgeMask, 2);
-  buf.writeUInt16LE(lightRaw, 4);
-  buf[12] = 0x02;
-  return buf;
-}
-
 describe('parseSmartPanelResponse', () => {
   it('returns null for non-13-byte payload', () => {
     assert.equal(parseSmartPanelResponse(Buffer.alloc(10, 0)), null);
@@ -65,3 +56,12 @@ describe('parseSmartPanelResponse', () => {
     assert.equal(result.lightLevel, 0);
   });
 });
+
+function makePayload({ buttonMask = 0, edgeMask = 0, lightRaw = 0 } = {}) {
+  const buf = Buffer.alloc(13, 0);
+  buf.writeUInt16LE(buttonMask, 0);
+  buf.writeUInt16LE(edgeMask, 2);
+  buf.writeUInt16LE(lightRaw, 4);
+  buf[12] = 0x02;
+  return buf;
+}

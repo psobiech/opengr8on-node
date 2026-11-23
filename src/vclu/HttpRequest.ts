@@ -143,7 +143,7 @@ export class HttpRequest extends HttpObject {
       const parsedBody = parseBody(detectedType, rawBody);
 
       const respHeaders: Record<string, string> = {};
-      resp.headers.forEach((v, k) => { respHeaders[k] = v; });
+      resp.headers.forEach((headerValue, headerName) => { respHeaders[headerName] = headerValue; });
 
       this.setValue(HTTP_REQUEST_FEATURES.RESPONSE_STATUS, statusCode);
       this.setValue(HTTP_REQUEST_FEATURES.RESPONSE_TYPE, detectedType);
@@ -151,9 +151,9 @@ export class HttpRequest extends HttpObject {
       this.setValue(HTTP_REQUEST_FEATURES.RESPONSE_BODY, parsedBody);
 
       this.triggerEvent(HTTP_REQUEST_EVENTS.RESPONSE);
-    } catch (e) {
-      if ((e as Error).name !== 'AbortError') {
-        console.error(`[${this.name}] HTTP ${method} ${url} error:`, e);
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') {
+        console.error(`[${this.name}] HTTP ${method} ${url} error:`, error);
       }
       this.clearValue(HTTP_REQUEST_FEATURES.RESPONSE_STATUS);
       this.clearValue(HTTP_REQUEST_FEATURES.RESPONSE_HEADERS);

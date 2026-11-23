@@ -51,7 +51,7 @@ describe('VirtualObject', () => {
     it('setValue bypasses feature fn', () => {
       const obj = new VirtualObject(null, 'obj');
       let fnCalls = 0;
-      obj.registerFeature(3, (v) => { fnCalls++; return v ?? 99; });
+      obj.registerFeature(3, (value) => { fnCalls++; return value ?? 99; });
       fnCalls = 0; // registerFeature calls fn once for init; reset before the actual assertion
       obj.setValue(3, 77);
       assert.equal(fnCalls, 0);
@@ -92,7 +92,7 @@ describe('VirtualObject', () => {
     it('setter called with value on set()', () => {
       const obj = new VirtualObject(null, 'obj');
       const received = [];
-      obj.registerFeature(1, (v) => { if (v !== undefined) received.push(v); return v; });
+      obj.registerFeature(1, (value) => { if (value !== undefined) received.push(value); return value; });
       obj.set(1, 'hello');
       assert.ok(received.includes('hello'));
     });
@@ -100,7 +100,7 @@ describe('VirtualObject', () => {
     it('setter return value stored', () => {
       const obj = new VirtualObject(null, 'obj');
       // fn returns undefined for getter (no live recompute) so get() uses stored value
-      obj.registerFeature(1, (v) => v === undefined ? undefined : Number(v) * 2);
+      obj.registerFeature(1, (value) => value === undefined ? undefined : Number(value) * 2);
       obj.set(1, 5);
       assert.equal(obj.get(1), 10);
     });
@@ -120,7 +120,7 @@ describe('VirtualObject', () => {
 
     it('calls registered method with args', () => {
       const obj = new VirtualObject(null, 'obj');
-      obj.registerMethod(0, (a, b) => Number(a) + Number(b));
+      obj.registerMethod(0, (left, right) => Number(left) + Number(right));
       assert.equal(obj.execute(0, 3, 4), 7);
     });
 
@@ -183,7 +183,7 @@ describe('VirtualObject', () => {
       const obj = new VirtualObject(null, 'obj');
       const log = [];
       obj.addEventHandler(0, async () => {
-        await new Promise((r) => setTimeout(r, 10));
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 10));
         log.push('handler');
       });
       await new Promise((resolve) => {
@@ -194,15 +194,15 @@ describe('VirtualObject', () => {
 
     it('events for different addresses are independent', async () => {
       const obj = new VirtualObject(null, 'obj');
-      let a = 0, b = 0;
-      obj.addEventHandler(0, () => { a++; });
-      obj.addEventHandler(1, () => { b++; });
+      let left = 0, right = 0;
+      obj.addEventHandler(0, () => { left++; });
+      obj.addEventHandler(1, () => { right++; });
       obj.triggerEvent(0);
       obj.triggerEvent(1);
       await obj.awaitEventTrigger(0);
       await obj.awaitEventTrigger(1);
-      assert.equal(a, 1);
-      assert.equal(b, 1);
+      assert.equal(left, 1);
+      assert.equal(right, 1);
     });
 
     it('awaitEventTrigger resolves immediately if no pending event', async () => {
@@ -214,7 +214,7 @@ describe('VirtualObject', () => {
       const obj = new VirtualObject(null, 'obj');
       const log = [];
       obj.addEventHandler(0, async () => {
-        await new Promise((r) => setTimeout(r, 20));
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
         log.push('first');
       });
       obj.triggerEvent(0);

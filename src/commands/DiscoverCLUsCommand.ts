@@ -17,26 +17,6 @@ const HASH_MOD_B = 0x13;
 const REQUEST_CMD = 'req_discovery_clu';
 const RESPONSE_CMD = 'resp_discovery_clu';
 
-export function hash(buf: Buffer): Buffer {
-  const result = Buffer.alloc(buf.length);
-  // OM / the CLU compute this on Java signed bytes (-5 % 13 === -5), not unsigned ones.
-  const s8 = (v: number) => (v << 24) >> 24;
-  let prev = s8((result[0] = (buf[0] ^ buf[buf.length - 1]) & 0xFF));
-  for (let i = 1; i < buf.length; i++) {
-    const a = prev % HASH_MOD_A;
-    const b = s8(buf[i]) % HASH_MOD_B;
-    prev = s8((result[i] = ((a + 1) * (b + 1)) & 0xFF));
-  }
-  return result;
-}
-
-export function getCipherType(randomBuf: Buffer, encrypted: Buffer, iv: Buffer, privateKey: Buffer | null): CipherTypeValue {
-  if (!privateKey) return CipherType.UNKNOWN;
-  const randomBytesHash = hash(randomBuf);
-  const randomEncrypted = CipherKey.getInitialCipherKey(iv, privateKey).encrypt(randomBytesHash);
-  return randomEncrypted.equals(encrypted) ? CipherType.PROJECT : CipherType.NONE;
-}
-
 export const DiscoverCLUsCommand = {
   request(encrypted: Buffer, iv: Buffer, localAddress: string): { toBuffer(): Buffer } {
     return {
@@ -46,39 +26,45 @@ export const DiscoverCLUsCommand = {
     };
   },
 
-  requestMatches(buf: Buffer): boolean {
-    const minLen = RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1 + REQUEST_CMD.length + 1 + MIN_IP_CHARACTERS;
-    if (buf.length < minLen) return false;
-    if (buf[RANDOM_ENCRYPTED_BYTES] !== 0x3A) return false;
-    if (buf[RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES] !== 0x3A) return false;
-    if (buf[RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1 + REQUEST_CMD.length] !== 0x3A) return false;
-    return asString(buf, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1, REQUEST_CMD.length) === REQUEST_CMD;
-  },
-
-  requestFromBuffer(buf: Buffer): { encrypted: Buffer; iv: Buffer; ipAddress: string } | null {
-    if (!DiscoverCLUsCommand.requestMatches(buf)) return null;
-    const encrypted = buf.subarray(0, RANDOM_ENCRYPTED_BYTES);
-    const iv = buf.subarray(RANDOM_ENCRYPTED_BYTES + 1, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES);
-    const rest = asString(buf, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1);
+  requestFromBuffer(buffer: Buffer): { encrypted: Buffer; iv: Buffer; ipAddress: string } | null {
+    if (!DiscoverCLUsCommand.requestMatches(buffer)) return null;
+    const encrypted = buffer.subarray(0, RANDOM_ENCRYPTED_BYTES);
+    const iv = buffer.subarray(RANDOM_ENCRYPTED_BYTES + 1, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES);
+    const rest = asString(buffer, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1);
     const parts = splitExact(rest, ':', 2);
     if (!parts) return null;
     return { encrypted, iv, ipAddress: parts[1] };
   },
 
-  responseMatches(buf: Buffer): boolean {
-    const minLen = RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1 + RESPONSE_CMD.length + 1 + MIN_SERIAL_NUMBER_CHARACTERS + 1 + MAC_CHARACTERS;
-    if (buf.length < minLen) return false;
-    if (buf[RANDOM_ENCRYPTED_BYTES] !== 0x3A) return false;
-    if (buf[RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES] !== 0x3A) return false;
-    if (buf[RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1 + RESPONSE_CMD.length] !== 0x3A) return false;
-    return asString(buf, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1, RESPONSE_CMD.length) === RESPONSE_CMD;
+  requestMatches(buffer: Buffer): boolean {
+    const minLength = RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1 + REQUEST_CMD.length + 1 + MIN_IP_CHARACTERS;
+    if (buffer.length < minLength) return false;
+    if (buffer[RANDOM_ENCRYPTED_BYTES] !== 0x3A) return false;
+    if (buffer[RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES] !== 0x3A) return false;
+    if (buffer[RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1 + REQUEST_CMD.length] !== 0x3A) return false;
+    return asString(buffer, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1, REQUEST_CMD.length) === REQUEST_CMD;
   },
 
-  responseFromBuffer(buf: Buffer): { encrypted: Buffer; iv: Buffer; serialNumber: number; macAddress: string } | null {
-    if (!DiscoverCLUsCommand.responseMatches(buf)) return null;
-    const encrypted = buf.subarray(0, RANDOM_ENCRYPTED_BYTES);
-    const iv = buf.subarray(RANDOM_ENCRYPTED_BYTES + 1, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES);
-    const rest = asString(buf, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1);
+  parse(randomBuf: Buffer, fromAddress: string, decryptedBuf: Buffer, privateKeys: Record<number, Buffer> = {}): CLUDevice | null {
+    const response = DiscoverCLUsCommand.responseFromBuffer(decryptedBuf);
+    if (!response) return null;
+    const privateKey = privateKeys[response.serialNumber] ?? null;
+    const cipherType = getCipherType(randomBuf, response.encrypted, response.iv, privateKey);
+    return new CLUDevice({
+      serialNumber: response.serialNumber,
+      macAddress: response.macAddress,
+      address: fromAddress,
+      cipherType,
+      iv: response.iv,
+      privateKey,
+    });
+  },
+
+  responseFromBuffer(buffer: Buffer): { encrypted: Buffer; iv: Buffer; serialNumber: number; macAddress: string } | null {
+    if (!DiscoverCLUsCommand.responseMatches(buffer)) return null;
+    const encrypted = buffer.subarray(0, RANDOM_ENCRYPTED_BYTES);
+    const iv = buffer.subarray(RANDOM_ENCRYPTED_BYTES + 1, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES);
+    const rest = asString(buffer, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1);
     const parts = splitExact(rest, ':', 3);
     if (!parts) return null;
     return {
@@ -89,19 +75,13 @@ export const DiscoverCLUsCommand = {
     };
   },
 
-  parse(randomBuf: Buffer, fromAddress: string, decryptedBuf: Buffer, privateKeys: Record<number, Buffer> = {}): CLUDevice | null {
-    const resp = DiscoverCLUsCommand.responseFromBuffer(decryptedBuf);
-    if (!resp) return null;
-    const privateKey = privateKeys[resp.serialNumber] ?? null;
-    const cipherType = getCipherType(randomBuf, resp.encrypted, resp.iv, privateKey);
-    return new CLUDevice({
-      serialNumber: resp.serialNumber,
-      macAddress: resp.macAddress,
-      address: fromAddress,
-      cipherType,
-      iv: resp.iv,
-      privateKey,
-    });
+  responseMatches(buffer: Buffer): boolean {
+    const minLength = RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1 + RESPONSE_CMD.length + 1 + MIN_SERIAL_NUMBER_CHARACTERS + 1 + MAC_CHARACTERS;
+    if (buffer.length < minLength) return false;
+    if (buffer[RANDOM_ENCRYPTED_BYTES] !== 0x3A) return false;
+    if (buffer[RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES] !== 0x3A) return false;
+    if (buffer[RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1 + RESPONSE_CMD.length] !== 0x3A) return false;
+    return asString(buffer, RANDOM_ENCRYPTED_BYTES + 1 + IV_BYTES + 1, RESPONSE_CMD.length) === RESPONSE_CMD;
   },
 
   response(encrypted: Buffer, iv: Buffer, serialNumber: number, macAddress: string): { toBuffer(): Buffer } {
@@ -118,3 +98,23 @@ export const DiscoverCLUsCommand = {
     };
   },
 };
+
+export function getCipherType(randomBuf: Buffer, encrypted: Buffer, iv: Buffer, privateKey: Buffer | null): CipherTypeValue {
+  if (!privateKey) return CipherType.UNKNOWN;
+  const randomBytesHash = hash(randomBuf);
+  const randomEncrypted = CipherKey.getInitialCipherKey(iv, privateKey).encrypt(randomBytesHash);
+  return randomEncrypted.equals(encrypted) ? CipherType.PROJECT : CipherType.NONE;
+}
+
+export function hash(input: Buffer): Buffer {
+  const result = Buffer.alloc(input.length);
+  // OM / the CLU compute this on Java signed bytes (-5 % 13 === -5), not unsigned ones.
+  const toSignedByte = (value: number) => (value << 24) >> 24;
+  let previous = toSignedByte((result[0] = (input[0] ^ input[input.length - 1]) & 0xFF));
+  for (let i = 1; i < input.length; i++) {
+    const previousRemainder = previous % HASH_MOD_A;
+    const currentRemainder = toSignedByte(input[i]) % HASH_MOD_B;
+    previous = toSignedByte((result[i] = ((previousRemainder + 1) * (currentRemainder + 1)) & 0xFF));
+  }
+  return result;
+}

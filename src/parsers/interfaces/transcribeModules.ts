@@ -13,18 +13,61 @@ export interface TranscribeResult {
   errors: string[];
 }
 
-export function loadProperties(filePath: string): Map<string, string> {
-  const map = new Map<string, string>();
-  if (!existsSync(filePath)) return map;
-  for (const line of readFileSync(filePath, 'utf8').split('\n')) {
-    if (line.startsWith('#') || !line.includes('=')) continue;
-    const eq = line.indexOf('=');
-    const key = line.slice(0, eq).trim();
-    const val = line.slice(eq + 1).trim()
-      .replace(/\\u([0-9a-fA-F]{4})/g, (_match: string, c: string) => String.fromCharCode(parseInt(c, 16)));
-    map.set(key, val);
+type WithResKey<T> = T & { resKey?: string };
+
+/**
+ * Reads all `module_*.xml` files from `dir`, parses them, resolves translations,
+ * and returns a nested lookup keyed by `[hwType][fwType][fwApiVer]`.
+ */
+export function transcribeModules(dir: string, options: TranscribeOptions = {}): TranscribeResult {
+  const lang = options.lang ?? 'pl';
+  const translate = makeTranslator(join(dir, 'text-resources'), lang);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const withDescription = <T>(entry: WithResKey<T>) => withDesc(translate, entry);
+
+  const files = readdirSync(dir).filter((fileName) => fileName.startsWith('module_') && fileName.endsWith('.xml'));
+  const output: Record<number, unknown> = {};
+  const errors: string[] = [];
+
+  for (const fileName of files) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const moduleDefinition: any = parseModuleXml(readFileSync(join(dir, fileName), 'utf8'));
+      if (!moduleDefinition) { errors.push(`${fileName}: no root element`); continue; }
+
+      const hwType = moduleDefinition.typeId != null ? parseInt(moduleDefinition.typeId as string, 16) : NaN;
+      const fwType = moduleDefinition.firmware?.typeId != null ? parseInt(moduleDefinition.firmware.typeId as string, 16) : NaN;
+      const fwApiVer = moduleDefinition.firmware?.version != null ? parseInt(moduleDefinition.firmware.version as string, 16) : NaN;
+
+      if (isNaN(hwType) || isNaN(fwType) || isNaN(fwApiVer)) {
+        errors.push(`${fileName}: missing hwType/fwType/fwApiVer`); continue;
+      }
+
+      const objects: Record<number, unknown> = {};
+      for (const objectDefinition of (moduleDefinition.firmware?.objects ?? []) as {
+        class: string; name: string; type: string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        interface: { features: any[]; methods: any[]; events: any[] };
+      }[]) {
+        objects[parseInt(objectDefinition.class, 10)] = {
+          name: objectDefinition.name,
+          type: objectDefinition.type,
+          features: indexBy<Feature>(
+            objectDefinition.interface.features.map((feature) => withDescription({ ...feature, enums: (feature.enums as WithResKey<EnumValue>[]).map(withDescription) })),
+            (feature) => feature.index,
+          ),
+          methods: indexBy<Method>(objectDefinition.interface.methods.map(withDescription), (method) => method.index),
+          events: indexBy<Event>(objectDefinition.interface.events.map(withDescription), (event) => event.address),
+        };
+      }
+
+      setNested(output, [hwType, fwType, fwApiVer], { name: (moduleDefinition.name as string) ?? null, file: fileName, objects });
+    } catch (error) {
+      errors.push(`${fileName}: ${(error as Error).message}`);
+    }
   }
-  return map;
+
+  return { output: output as ModuleTranscript, errors };
 }
 
 function makeTranslator(resDir: string, lang: string): (resKey: string | undefined) => string | undefined {
@@ -38,83 +81,40 @@ function makeTranslator(resDir: string, lang: string): (resKey: string | undefin
   };
 }
 
-type WithResKey<T> = T & { resKey?: string };
+export function loadProperties(filePath: string): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!existsSync(filePath)) return map;
+  for (const line of readFileSync(filePath, 'utf8').split('\n')) {
+    if (line.startsWith('#') || !line.includes('=')) continue;
+    const separatorIdx = line.indexOf('=');
+    const key = line.slice(0, separatorIdx).trim();
+    const value = line.slice(separatorIdx + 1).trim()
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_match: string, hexCode: string) => String.fromCharCode(parseInt(hexCode, 16)));
+    map.set(key, value);
+  }
+  return map;
+}
 
-function withDesc<T>(t: (k: string | undefined) => string | undefined, obj: WithResKey<T>): T & { desc?: string } {
-  const { resKey, ...rest } = obj as WithResKey<T> & Record<string, unknown>;
-  const desc = t(resKey);
+function withDesc<T>(translate: (resKey: string | undefined) => string | undefined, entry: WithResKey<T>): T & { desc?: string } {
+  const { resKey, ...rest } = entry as WithResKey<T> & Record<string, unknown>;
+  const desc = translate(resKey);
   const result = rest as T & { desc?: string };
   if (desc !== undefined) result.desc = desc;
   return result;
 }
 
-function indexBy<T>(arr: T[], keyFn: (item: T) => number): Record<number, T> {
-  const out: Record<number, T> = {};
-  for (const item of arr) out[keyFn(item)] = item;
-  return out;
+function indexBy<T>(items: T[], keyFn: (item: T) => number): Record<number, T> {
+  const result: Record<number, T> = {};
+  for (const item of items) result[keyFn(item)] = item;
+  return result;
 }
 
-function setNested(obj: Record<string | number, unknown>, keys: number[], value: unknown): void {
-  let cur = obj;
+function setNested(target: Record<string | number, unknown>, keys: number[], value: unknown): void {
+  let current = target;
   for (let i = 0; i < keys.length - 1; i++) {
-    const k = keys[i];
-    if (!(k in cur)) cur[k] = {};
-    cur = cur[k] as Record<string | number, unknown>;
+    const key = keys[i];
+    if (!(key in current)) current[key] = {};
+    current = current[key] as Record<string | number, unknown>;
   }
-  cur[keys[keys.length - 1]] = value;
-}
-
-/**
- * Reads all `module_*.xml` files from `dir`, parses them, resolves translations,
- * and returns a nested lookup keyed by `[hwType][fwType][fwApiVer]`.
- */
-export function transcribeModules(dir: string, options: TranscribeOptions = {}): TranscribeResult {
-  const lang = options.lang ?? 'pl';
-  const t = makeTranslator(join(dir, 'text-resources'), lang);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const wd = <T>(obj: WithResKey<T>) => withDesc(t, obj);
-
-  const files = readdirSync(dir).filter((f) => f.startsWith('module_') && f.endsWith('.xml'));
-  const output: Record<number, unknown> = {};
-  const errors: string[] = [];
-
-  for (const fileName of files) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const m: any = parseModuleXml(readFileSync(join(dir, fileName), 'utf8'));
-      if (!m) { errors.push(`${fileName}: no root element`); continue; }
-
-      const hwType = m.typeId != null ? parseInt(m.typeId as string, 16) : NaN;
-      const fwType = m.firmware?.typeId != null ? parseInt(m.firmware.typeId as string, 16) : NaN;
-      const fwApiVer = m.firmware?.version != null ? parseInt(m.firmware.version as string, 16) : NaN;
-
-      if (isNaN(hwType) || isNaN(fwType) || isNaN(fwApiVer)) {
-        errors.push(`${fileName}: missing hwType/fwType/fwApiVer`); continue;
-      }
-
-      const objects: Record<number, unknown> = {};
-      for (const o of (m.firmware?.objects ?? []) as {
-        class: string; name: string; type: string;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        interface: { features: any[]; methods: any[]; events: any[] };
-      }[]) {
-        objects[parseInt(o.class, 10)] = {
-          name: o.name,
-          type: o.type,
-          features: indexBy<Feature>(
-            o.interface.features.map((f) => wd({ ...f, enums: (f.enums as WithResKey<EnumValue>[]).map(wd) })),
-            (f) => f.index,
-          ),
-          methods: indexBy<Method>(o.interface.methods.map(wd), (m) => m.index),
-          events: indexBy<Event>(o.interface.events.map(wd), (e) => e.address),
-        };
-      }
-
-      setNested(output, [hwType, fwType, fwApiVer], { name: (m.name as string) ?? null, file: fileName, objects });
-    } catch (e) {
-      errors.push(`${fileName}: ${(e as Error).message}`);
-    }
-  }
-
-  return { output: output as ModuleTranscript, errors };
+  current[keys[keys.length - 1]] = value;
 }

@@ -59,16 +59,16 @@ export class VirtualSystem implements IVirtualSystem {
         } else if (stat) {
           this._interfaceRegistry = InterfaceRegistry.fromZip(interfaceRegistryPath);
         }
-      } catch (e) {
-        console.warn('[VirtualSystem] failed to load interface registry:', e);
+      } catch (error) {
+        console.warn('[VirtualSystem] failed to load interface registry:', error);
       }
     }
 
     if (projectOmpPath) {
       try {
         this._projectRegistry = await ProjectRegistry.loadFromOmp(projectOmpPath);
-      } catch (e) {
-        console.warn('[VirtualSystem] failed to load project registry:', e);
+      } catch (error) {
+        console.warn('[VirtualSystem] failed to load project registry:', error);
       }
     }
   }
@@ -92,16 +92,16 @@ export class VirtualSystem implements IVirtualSystem {
     return this._virtualClu;
   }
 
-  setLuaCallFn(fn: (script: string) => LuaLike): void {
-    this._luaCallFn = fn;
+  setLuaCallFn(luaCallFn: (script: string) => LuaLike): void {
+    this._luaCallFn = luaCallFn;
   }
 
   luaCall(script: string): LuaLike {
     if (this._luaCallFn != null) {
       try {
         return this._luaCallFn(script);
-      } catch (e) {
-        console.error('[VirtualSystem] luaCall error:', e);
+      } catch (error) {
+        console.error('[VirtualSystem] luaCall error:', error);
       }
     }
     return null;
@@ -114,9 +114,9 @@ export class VirtualSystem implements IVirtualSystem {
       case VirtualCLU.INDEX:
         this._virtualClu.name = name;
         // re-register under new name if changed
-        for (const [k, v] of this._objectsByName) {
-          if (v === this._virtualClu) {
-            this._objectsByName.delete(k);
+        for (const [objectName, virtualObject] of this._objectsByName) {
+          if (virtualObject === this._virtualClu) {
+            this._objectsByName.delete(objectName);
             break;
           }
         }
@@ -184,8 +184,8 @@ export class VirtualSystem implements IVirtualSystem {
     for (const obj of this._objectsByName.values()) {
       try {
         obj.setup();
-      } catch (e) {
-        console.error(`[VirtualSystem] setup error for ${obj.name}:`, e);
+      } catch (error) {
+        console.error(`[VirtualSystem] setup error for ${obj.name}:`, error);
       }
     }
   }
@@ -194,16 +194,16 @@ export class VirtualSystem implements IVirtualSystem {
     for (const obj of this._objectsByName.values()) {
       try {
         obj.loop();
-      } catch (e) {
-        console.error(`[VirtualSystem] loop error for ${obj.name}:`, e);
+      } catch (error) {
+        console.error(`[VirtualSystem] loop error for ${obj.name}:`, error);
       }
     }
     // Drive client-report pushes (works in both setInterval-driven and Lua-loop-driven modes)
     const now = Date.now();
     if (now - this._lastClientReportMs >= 1000) {
       this._lastClientReportMs = now;
-      for (const fn of this._clientReportFns.values()) {
-        try { fn(); } catch { /* ignore */ }
+      for (const clientReportFn of this._clientReportFns.values()) {
+        try { clientReportFn(); } catch { /* ignore */ }
       }
     }
   }
@@ -257,8 +257,8 @@ export class VirtualSystem implements IVirtualSystem {
     this._sendClientReportImpl?.(addr, port, sessionId, response);
   }
 
-  setSendClientReportFn(fn: (addr: string, port: number, sessionId: number, response: string) => void): void {
-    this._sendClientReportImpl = fn;
+  setSendClientReportFn(sendClientReportFn: (addr: string, port: number, sessionId: number, response: string) => void): void {
+    this._sendClientReportImpl = sendClientReportFn;
   }
 
   clientDestroy(addr: string, port: number, sessionId: number): number {
@@ -272,8 +272,8 @@ export class VirtualSystem implements IVirtualSystem {
     for (const obj of this._objectsByName.values()) {
       try {
         obj.close();
-      } catch (e) {
-        console.error(`[VirtualSystem] close error for ${obj.name}:`, e);
+      } catch (error) {
+        console.error(`[VirtualSystem] close error for ${obj.name}:`, error);
       }
     }
     this._objectsByName.clear();
@@ -288,7 +288,7 @@ function luaStringify(value: LuaLike): string {
   if (Array.isArray(value)) return `{${value.map(luaStringify).join(',')}}`;
   if (typeof value === 'object') {
     const entries = Object.entries(value as Record<string, LuaLike>)
-      .map(([k, v]) => `${k}=${luaStringify(v)}`)
+      .map(([name, value]) => `${name}=${luaStringify(value)}`)
       .join(',');
     return `{${entries}}`;
   }

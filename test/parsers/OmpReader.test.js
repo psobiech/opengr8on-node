@@ -8,10 +8,10 @@ const TEST_OMP = new URL('../../../opengr8on/modules/parsers/src/test/resources/
 describe('OmpReader', () => {
   describe('readProjectCipherKey', () => {
     it('returns CipherKey with correct key bytes', () => {
-      const ck = readProjectCipherKey(TEST_OMP);
-      assert.ok(ck instanceof CipherKey);
-      assert.ok(ck.getSecretKey().equals(Buffer.from('vd/TDJU8awHhOBn6h3YsxQ==', 'base64')));
-      assert.ok(ck.getIV().equals(Buffer.from('oykoaQgbuuhYOnE9CUdrnQ==', 'base64')));
+      const cipherKey = readProjectCipherKey(TEST_OMP);
+      assert.ok(cipherKey instanceof CipherKey);
+      assert.ok(cipherKey.getSecretKey().equals(Buffer.from('vd/TDJU8awHhOBn6h3YsxQ==', 'base64')));
+      assert.ok(cipherKey.getIV().equals(Buffer.from('oykoaQgbuuhYOnE9CUdrnQ==', 'base64')));
     });
 
     it('throws for nonexistent file', () => {

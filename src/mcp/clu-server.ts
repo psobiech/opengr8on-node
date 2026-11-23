@@ -13,22 +13,70 @@ export interface CluServerConfig {
   httpPort?: number;
 }
 
+let _config: CluServerConfig | null = null;
 let _cluEntries: ProjectClu[] | null = null;
 let _clients: Map<string, CLUClient> | null = null;
 let _localAddress: string | null = null;
 let _port: number | null = null;
 
-function init(config: CluServerConfig): void {
-  if (_clients) return;
-
-  _localAddress = config.localAddress;
-  _port = config.cluPort;
-
-  _cluEntries = readProjectClus(config.ompFile);
-  _clients = new Map();
+export async function start(config: CluServerConfig): Promise<void> {
+  _config = config;
+  if (config.httpPort) {
+    await serveHttp(createServer, config.httpPort);
+  } else {
+    const server = createServer();
+    await server.connect(new StdioServerTransport());
+  }
 }
 
-let _config: CluServerConfig | null = null;
+export function createServer(): McpServer {
+  const server = new McpServer({ name: 'opengr8on-clu', version: '0.1.0' });
+
+  server.registerTool('clu_list_clus', {
+    description: 'List all CLUs defined in the OMP project file.',
+  }, async () => {
+    try {
+      init(_config!);
+      return textResult(_cluEntries!.map(clu => `${clu.name}  serial=${clu.serial}  ip=${clu.ipAddress}`).join('\n'));
+    } catch (error) { return errorResult((error as Error).message); }
+  });
+
+  server.registerTool('clu_execute', {
+    description: 'Execute a Lua script or expression on a CLU. Returns the string result.',
+    inputSchema: {
+      clu:    z.string().describe('CLU name (e.g. "ALARM") or serial hex (e.g. "1e754612")'),
+      script: z.string().describe('Lua expression, e.g. "checkAlive()" or "RELAY_1:get()"'),
+    },
+  }, async ({ clu, script }) => {
+    try { return textResult(await resolveClu(clu).execute(script)); }
+    catch (error) { return errorResult((error as Error).message); }
+  });
+
+  server.registerTool('clu_get_object', {
+    description: 'Get the current value of a CLU object.',
+    inputSchema: {
+      clu:      z.string().describe('CLU name or serial hex'),
+      objectId: z.string().describe('Object name on the CLU, e.g. "RELAY_1"'),
+    },
+  }, async ({ clu, objectId }) => {
+    try { return textResult(await resolveClu(clu).execute(`${objectId}:get()`)); }
+    catch (error) { return errorResult((error as Error).message); }
+  });
+
+  server.registerTool('clu_set_object', {
+    description: 'Set the value of a CLU object.',
+    inputSchema: {
+      clu:      z.string().describe('CLU name or serial hex'),
+      objectId: z.string().describe('Object name on the CLU, e.g. "RELAY_1"'),
+      value:    z.string().describe('Lua literal: "1", "true", "0.5", etc.'),
+    },
+  }, async ({ clu, objectId, value }) => {
+    try { return textResult(await resolveClu(clu).execute(`${objectId}:set(${value})`)); }
+    catch (error) { return errorResult((error as Error).message); }
+  });
+
+  return server;
+}
 
 function resolveClu(cluId: string): CLUClient {
   init(_config!);
@@ -42,64 +90,20 @@ function resolveClu(cluId: string): CLUClient {
   return _clients!.get(entry.serial)!;
 }
 
-const ok   = (text: unknown) => ({ content: [{ type: 'text' as const, text: String(text ?? 'null') }] });
-const fail = (msg: string)   => ({ content: [{ type: 'text' as const, text: `Error: ${msg}` }], isError: true as const });
+function init(config: CluServerConfig): void {
+  if (_clients) return;
 
-export function createServer(): McpServer {
-  const server = new McpServer({ name: 'opengr8on-clu', version: '0.1.0' });
+  _localAddress = config.localAddress;
+  _port = config.cluPort;
 
-  server.registerTool('clu_list_clus', {
-    description: 'List all CLUs defined in the OMP project file.',
-  }, async () => {
-    try {
-      init(_config!);
-      return ok(_cluEntries!.map(c => `${c.name}  serial=${c.serial}  ip=${c.ipAddress}`).join('\n'));
-    } catch (e) { return fail((e as Error).message); }
-  });
-
-  server.registerTool('clu_execute', {
-    description: 'Execute a Lua script or expression on a CLU. Returns the string result.',
-    inputSchema: {
-      clu:    z.string().describe('CLU name (e.g. "ALARM") or serial hex (e.g. "1e754612")'),
-      script: z.string().describe('Lua expression, e.g. "checkAlive()" or "RELAY_1:get()"'),
-    },
-  }, async ({ clu, script }) => {
-    try { return ok(await resolveClu(clu).execute(script)); }
-    catch (e) { return fail((e as Error).message); }
-  });
-
-  server.registerTool('clu_get_object', {
-    description: 'Get the current value of a CLU object.',
-    inputSchema: {
-      clu:      z.string().describe('CLU name or serial hex'),
-      objectId: z.string().describe('Object name on the CLU, e.g. "RELAY_1"'),
-    },
-  }, async ({ clu, objectId }) => {
-    try { return ok(await resolveClu(clu).execute(`${objectId}:get()`)); }
-    catch (e) { return fail((e as Error).message); }
-  });
-
-  server.registerTool('clu_set_object', {
-    description: 'Set the value of a CLU object.',
-    inputSchema: {
-      clu:      z.string().describe('CLU name or serial hex'),
-      objectId: z.string().describe('Object name on the CLU, e.g. "RELAY_1"'),
-      value:    z.string().describe('Lua literal: "1", "true", "0.5", etc.'),
-    },
-  }, async ({ clu, objectId, value }) => {
-    try { return ok(await resolveClu(clu).execute(`${objectId}:set(${value})`)); }
-    catch (e) { return fail((e as Error).message); }
-  });
-
-  return server;
+  _cluEntries = readProjectClus(config.ompFile);
+  _clients = new Map();
 }
 
-export async function start(config: CluServerConfig): Promise<void> {
-  _config = config;
-  if (config.httpPort) {
-    await serveHttp(createServer, config.httpPort);
-  } else {
-    const server = createServer();
-    await server.connect(new StdioServerTransport());
-  }
+function textResult(text: unknown) {
+  return { content: [{ type: 'text' as const, text: String(text ?? 'null') }] };
+}
+
+function errorResult(message: string) {
+  return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true as const };
 }

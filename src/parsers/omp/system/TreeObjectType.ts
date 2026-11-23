@@ -7,7 +7,7 @@ const NAMES = [
 type TreeObjectTypeName = typeof NAMES[number];
 
 export const TreeObjectType = Object.freeze(
-  Object.fromEntries(NAMES.map(v => [v, v])) as Record<TreeObjectTypeName, TreeObjectTypeName>
+  Object.fromEntries(NAMES.map(typeName => [typeName, typeName])) as Record<TreeObjectTypeName, TreeObjectTypeName>
 );
 
 export function treeObjectTypeFrom(label: string | null | undefined): string {

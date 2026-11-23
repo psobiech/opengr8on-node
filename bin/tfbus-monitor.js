@@ -4,8 +4,6 @@ import { SerialTransport } from '../dist/tfbus/transport/SerialTransport.js';
 import { runMonitor } from '../dist/tfbus/monitor.js';
 
 const args = process.argv.slice(2);
-function argValue(flag) { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : null; }
-function hasFlag(flag) { return args.includes(flag); }
 
 const port = argValue('--port');
 if (!port) {
@@ -45,3 +43,12 @@ await runMonitor(transport, {
 });
 
 await transport.close();
+
+function argValue(flag) {
+  const flagIdx = args.indexOf(flag);
+  return flagIdx !== -1 ? args[flagIdx + 1] : null;
+}
+
+function hasFlag(flag) {
+  return args.includes(flag);
+}

@@ -19,9 +19,9 @@ export class RxFrameParser {
     this.#onSkip = onSkip;
   }
 
-  #skip(n: number): void {
-    if (this.#onSkip && n > 0) this.#onSkip(Buffer.from(this.#buf.subarray(0, n)));
-    this.#buf = this.#buf.subarray(n);
+  #skip(byteCount: number): void {
+    if (this.#onSkip && byteCount > 0) this.#onSkip(Buffer.from(this.#buf.subarray(0, byteCount)));
+    this.#buf = this.#buf.subarray(byteCount);
   }
 
   push(chunk: Buffer): Buffer[] {
@@ -53,7 +53,7 @@ export class RxFrameParser {
     // Module→CLU response: byte[2] is the length, not a type.
     const candidates: number[] = this.#buf[1] === 0x00
       ? [Math.max(MIN_LEN, 3 + this.#buf[2])]
-      : [this.#typedLen()].filter((l): l is number => l !== null);
+      : [this.#typedLen()].filter((candidateLength): candidateLength is number => candidateLength !== null);
     if (candidates.length) {
       for (const len of candidates) {
         if (len > MAX_LEN) continue;

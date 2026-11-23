@@ -8,10 +8,6 @@ import {
   CLU_EVENTS,
 } from '../../dist/vclu/VirtualCLU.js';
 
-function makeClu() {
-  return new VirtualCLU(null, '/tmp', 'TestCLU');
-}
-
 describe('VirtualCLU constants', () => {
   it('INDEX is 0', () => assert.equal(VirtualCLU.INDEX, 0));
 
@@ -36,8 +32,8 @@ describe('VirtualCLU features', () => {
 
   it('UPTIME returns non-negative number', () => {
     clu = makeClu();
-    const v = clu.get(CLU_FEATURES.UPTIME);
-    assert.ok(typeof v === 'number' && v >= 0, `uptime=${v}`);
+    const value = clu.get(CLU_FEATURES.UPTIME);
+    assert.ok(typeof value === 'number' && value >= 0, `uptime=${value}`);
   });
 
   it('STATE starts at STARTING (0)', () => {
@@ -74,45 +70,45 @@ describe('VirtualCLU features', () => {
 
   it('DAY_OF_MONTH is 1-31', () => {
     clu = makeClu();
-    const v = Number(clu.get(CLU_FEATURES.DAY_OF_MONTH));
-    assert.ok(v >= 1 && v <= 31, `day=${v}`);
+    const value = Number(clu.get(CLU_FEATURES.DAY_OF_MONTH));
+    assert.ok(value >= 1 && value <= 31, `day=${value}`);
   });
 
   it('MONTH is 1-12', () => {
     clu = makeClu();
-    const v = Number(clu.get(CLU_FEATURES.MONTH));
-    assert.ok(v >= 1 && v <= 12, `month=${v}`);
+    const value = Number(clu.get(CLU_FEATURES.MONTH));
+    assert.ok(value >= 1 && value <= 12, `month=${value}`);
   });
 
   it('YEAR is current year or later', () => {
     clu = makeClu();
-    const v = Number(clu.get(CLU_FEATURES.YEAR));
-    assert.ok(v >= 2024, `year=${v}`);
+    const value = Number(clu.get(CLU_FEATURES.YEAR));
+    assert.ok(value >= 2024, `year=${value}`);
   });
 
   it('DAY_OF_WEEK is 1-7 (ISO: Mon=1, Sun=7)', () => {
     clu = makeClu();
-    const v = Number(clu.get(CLU_FEATURES.DAY_OF_WEEK));
-    assert.ok(v >= 1 && v <= 7, `dow=${v}`);
+    const value = Number(clu.get(CLU_FEATURES.DAY_OF_WEEK));
+    assert.ok(value >= 1 && value <= 7, `dow=${value}`);
   });
 
   it('HOUR is 0-23', () => {
     clu = makeClu();
-    const v = Number(clu.get(CLU_FEATURES.HOUR));
-    assert.ok(v >= 0 && v <= 23, `hour=${v}`);
+    const value = Number(clu.get(CLU_FEATURES.HOUR));
+    assert.ok(value >= 0 && value <= 23, `hour=${value}`);
   });
 
   it('MINUTE is 0-59', () => {
     clu = makeClu();
-    const v = Number(clu.get(CLU_FEATURES.MINUTE));
-    assert.ok(v >= 0 && v <= 59, `minute=${v}`);
+    const value = Number(clu.get(CLU_FEATURES.MINUTE));
+    assert.ok(value >= 0 && value <= 59, `minute=${value}`);
   });
 
   it('TIMESTAMP is close to current unix time', () => {
     clu = makeClu();
-    const ts = Number(clu.get(CLU_FEATURES.TIMESTAMP));
+    const timestamp = Number(clu.get(CLU_FEATURES.TIMESTAMP));
     const now = Date.now() / 1000;
-    assert.ok(Math.abs(ts - now) < 5, `ts=${ts}, now=${now}`);
+    assert.ok(Math.abs(timestamp - now) < 5, `ts=${timestamp}, now=${now}`);
   });
 
   it('TIME_ZONE defaults to 0', () => {
@@ -220,3 +216,7 @@ describe('VirtualCLU close', () => {
     assert.doesNotThrow(() => clu.close());
   });
 });
+
+function makeClu() {
+  return new VirtualCLU(null, '/tmp', 'TestCLU');
+}

@@ -51,24 +51,6 @@ export interface MqttDiscoveryBase {
   origin: MqttDiscoveryOrigin;
 }
 
-function base(
-  name: string,
-  uniqueId: string,
-  rootTopic: string,
-  opts: Partial<MqttDiscoveryBase> = {},
-): MqttDiscoveryBase {
-  return {
-    name,
-    unique_id: uniqueId,
-    '~': rootTopic,
-    availability_topic: MQTT_AVAILABILITY_TOPIC,
-    availability_mode: 'latest',
-    state_topic: `${rootTopic}/state`,
-    origin: MQTT_ORIGIN,
-    ...opts,
-  };
-}
-
 export interface MqttDiscoverySensor extends MqttDiscoveryBase {
   device_class?: string;
   unit_of_measurement?: string;
@@ -193,5 +175,23 @@ export function mqttDiscoveryNumberFloat(
     min,
     max,
     device: opts.device,
+  };
+}
+
+function base(
+  name: string,
+  uniqueId: string,
+  rootTopic: string,
+  opts: Partial<MqttDiscoveryBase> = {},
+): MqttDiscoveryBase {
+  return {
+    name,
+    unique_id: uniqueId,
+    '~': rootTopic,
+    availability_topic: MQTT_AVAILABILITY_TOPIC,
+    availability_mode: 'latest',
+    state_topic: `${rootTopic}/state`,
+    origin: MQTT_ORIGIN,
+    ...opts,
   };
 }

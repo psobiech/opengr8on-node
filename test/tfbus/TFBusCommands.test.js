@@ -37,11 +37,11 @@ describe('universal frames', () => {
   });
 
   it('statusPollFrame dest=0x03 is 4 bytes starting AA 03 04', () => {
-    const f = statusPollFrame(0x03);
-    assert.equal(f.length, 4);
-    assert.equal(f[0], 0xAA);
-    assert.equal(f[1], 0x03);
-    assert.equal(f[2], 0x04);
+    const frame = statusPollFrame(0x03);
+    assert.equal(frame.length, 4);
+    assert.equal(frame[0], 0xAA);
+    assert.equal(frame[1], 0x03);
+    assert.equal(frame[2], 0x04);
   });
 
   it('versionQueryFrame dest=0x01 = AA 01 F9 52', () => {
@@ -160,36 +160,36 @@ describe('TFBUS_CMD frames (0x31)', () => {
   });
 
   it('drawFrame is 26 bytes with cmd=0x19', () => {
-    const f = drawFrame(0x0A);
-    assert.equal(f.length, 26);
-    assert.equal(f[3], 0x19);
+    const frame = drawFrame(0x0A);
+    assert.equal(frame.length, 26);
+    assert.equal(frame[3], 0x19);
   });
 
   it('buzzerBeepFrame encodes freq/dur/vol as LE uint16', () => {
-    const f = buzzerBeepFrame(0x0A, 440, 1000, 8);
+    const frame = buzzerBeepFrame(0x0A, 440, 1000, 8);
     // payload: [0x0F, freq_lo, freq_hi, dur_lo, dur_hi, vol_lo, vol_hi, ...]
-    assert.equal(f[3], 0x0F); // cmd
-    assert.equal(f[4], 440 & 0xFF);    // freq lo = 0xB8
-    assert.equal(f[5], 440 >> 8);      // freq hi = 0x01
-    assert.equal(f[6], 1000 & 0xFF);   // dur lo = 0xE8
-    assert.equal(f[7], 1000 >> 8);     // dur hi = 0x03
-    assert.equal(f[8], 8 & 0xFF);      // vol lo = 0x08
-    assert.equal(f[9], 8 >> 8);        // vol hi = 0x00
+    assert.equal(frame[3], 0x0F); // cmd
+    assert.equal(frame[4], 440 & 0xFF);    // freq lo = 0xB8
+    assert.equal(frame[5], 440 >> 8);      // freq hi = 0x01
+    assert.equal(frame[6], 1000 & 0xFF);   // dur lo = 0xE8
+    assert.equal(frame[7], 1000 >> 8);     // dur hi = 0x03
+    assert.equal(frame[8], 8 & 0xFF);      // vol lo = 0x08
+    assert.equal(frame[9], 8 >> 8);        // vol hi = 0x00
   });
 
   it('printTextFrame encodes x/y/font and text bytes', () => {
-    const f = printTextFrame(0x0A, 0, 1, 2, 'Hello');
-    assert.equal(f[3], 0x0A); // cmd
-    assert.equal(f[4], 0);    // x
-    assert.equal(f[5], 1);    // y
-    assert.equal(f[6], 2);    // font
-    assert.equal(f[7], 0x48); // 'H'
-    assert.equal(f[8], 0x65); // 'e'
+    const frame = printTextFrame(0x0A, 0, 1, 2, 'Hello');
+    assert.equal(frame[3], 0x0A); // cmd
+    assert.equal(frame[4], 0);    // x
+    assert.equal(frame[5], 1);    // y
+    assert.equal(frame[6], 2);    // font
+    assert.equal(frame[7], 0x48); // 'H'
+    assert.equal(frame[8], 0x65); // 'e'
   });
 
   it('printTextFrame truncates text to 16 chars', () => {
-    const f = printTextFrame(0x0A, 0, 0, 0, 'A'.repeat(20));
+    const frame = printTextFrame(0x0A, 0, 0, 0, 'A'.repeat(20));
     // text starts at f[7], 16 bytes (f[7]..f[22]), then zeros
-    assert.equal(f[7 + 16], 0x00); // byte after 16-char text field = 0
+    assert.equal(frame[7 + 16], 0x00); // byte after 16-char text field = 0
   });
 });

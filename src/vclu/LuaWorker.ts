@@ -19,10 +19,6 @@ import { VirtualSystem } from './VirtualSystem.js';
 import type { VirtualSystemOptions } from './VirtualSystem.js';
 import type { LuaLike, Subscription, WorkerMessage } from './types.js';
 
-function send(msg: WorkerMessage): void {
-  parentPort!.postMessage(msg);
-}
-
 const SCRIPT_OFFSET = 12;
 const RESULT_OFFSET = 12 + 65536;
 const STATE_IDLE    = 0;
@@ -41,22 +37,22 @@ const {
   aDriveDirectory: string;
 };
 
-const i32 = new Int32Array(sab);
-const u8  = new Uint8Array(sab);
+const sabWords = new Int32Array(sab);
+const sabBytes = new Uint8Array(sab);
 
 // ── VirtualSystem ─────────────────────────────────────────────────────────────
-const vs = new VirtualSystem(vsOptions);
+const virtualSystem = new VirtualSystem(vsOptions);
 
-vs.setSendClientReportFn((addr: string, port: number, sessionId: number, response: string) => {
+virtualSystem.setSendClientReportFn((addr: string, port: number, sessionId: number, response: string) => {
   send({ type: 'clientReport', addr, port, sessionId, response });
 });
 
-await vs.loadRegistries();
+await virtualSystem.loadRegistries();
 
 // ── wasmoon ───────────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mod = await import('wasmoon') as any;
-const LuaFactory = mod.LuaFactory ?? mod.default?.LuaFactory;
+const wasmoonModule = await import('wasmoon') as any;
+const LuaFactory = wasmoonModule.LuaFactory ?? wasmoonModule.default?.LuaFactory;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const engine: any = await new LuaFactory().createEngine();
 
@@ -65,22 +61,22 @@ const engine: any = await new LuaFactory().createEngine();
 // lowercase filenames, so mount each file as its lowercase equivalent.
 try {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const FS: any = engine.cmodule.module.FS;
-  FS.mkdir('/lua');
+  const virtualFs: any = engine.cmodule.module.FS;
+  virtualFs.mkdir('/lua');
   if (existsSync(aDriveDirectory)) {
     for (const file of readdirSync(aDriveDirectory)) {
       if (file.toUpperCase().endsWith('.LUA')) {
         const content = readFileSync(resolve(aDriveDirectory, file), 'utf8');
-        FS.writeFile(`/lua/${file.toLowerCase()}`, content);
+        virtualFs.writeFile(`/lua/${file.toLowerCase()}`, content);
       }
     }
   }
-} catch (e) {
-  console.error('[LuaWorker] FS mount error:', e);
+} catch (error) {
+  console.error('[LuaWorker] FS mount error:', error);
 }
 
 // ── Globals: luaCall ──────────────────────────────────────────────────────────
-vs.setLuaCallFn((script: string): LuaLike => {
+virtualSystem.setLuaCallFn((script: string): LuaLike => {
   try {
     return engine.doStringSync(`return ${script}`) as LuaLike;
   } catch {
@@ -88,106 +84,58 @@ vs.setLuaCallFn((script: string): LuaLike => {
   }
 });
 
-// ── SAB luaCall handler ───────────────────────────────────────────────────────
-// Called each Lua tick (from SYSTEM.Loop).
-// Three-phase handshake with the main thread:
-//   1. Main writes script → sets STATE_PENDING → notifies worker
-//   2. Worker reads script, runs Lua, writes result → sets STATE_RESULT → notifies main
-//   3. Main reads result → sets STATE_IDLE → notifies worker  (releases buffer for reuse)
-// The final Atomics.wait(STATE_RESULT) keeps the worker blocked while main reads,
-// so the buffer is never overwritten before main is done with it.
-function handlePendingCall(): void {
-  if (Atomics.load(i32, 0) !== STATE_PENDING) return;
-
-  const len    = Atomics.load(i32, 1);
-  const script = Buffer.from(sab, SCRIPT_OFFSET, len).toString('utf8');
-
-  let result = 'nil';
-  try {
-    const r = engine.doStringSync(`return ${script}`) as LuaLike;
-    result = r == null ? 'nil' : String(r);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[LuaWorker] luaCall error:', msg);
-  }
-
-  const rb = Buffer.from(result, 'utf8');
-  u8.set(rb, RESULT_OFFSET);
-  Atomics.store(i32, 2, rb.length);
-  Atomics.store(i32, 0, STATE_RESULT); // signal main thread: result is ready
-  Atomics.notify(i32, 0, 1);           // wake main thread's Atomics.waitAsync
-  Atomics.wait(i32, 0, STATE_RESULT);  // block until main resets to IDLE
-}
-
-// ── Lua subscription helper ───────────────────────────────────────────────────
-function parseSubs(subs: unknown): Subscription[] {
-  if (!subs || typeof subs !== 'object') return [];
-  const result: Subscription[] = [];
-  for (const entry of Object.values(subs as Record<string, unknown>)) {
-    if (!entry || typeof entry !== 'object') continue;
-    const arr   = Object.values(entry as Record<string, unknown>);
-    const ref   = arr[0] as { name?: string } | null;
-    const index = arr[1] as number | null;
-    if (ref?.name == null || index == null) continue;
-    const obj = vs.getObject(ref.name);
-    if (obj == null) continue;
-    result.push({ object: obj, index: Number(index) });
-  }
-  return result;
-}
-
 // ── OBJECT / GATE prototypes ──────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const OBJECT_PROTO: any = {
-  new: (_s: unknown, idx: number, ipOrName: unknown, name?: unknown) => {
-    const n  = name !== undefined ? String(name) : String(ipOrName);
-    const ip = name !== undefined ? String(ipOrName) : null;
-    vs.newObject(idx, n, ip);
-    return { name: n, _prototype: OBJECT_PROTO };
+  new: (_self: unknown, index: number, ipOrName: unknown, name?: unknown) => {
+    const objectName = name !== undefined ? String(name) : String(ipOrName);
+    const ipAddress  = name !== undefined ? String(ipOrName) : null;
+    virtualSystem.newObject(index, objectName, ipAddress);
+    return { name: objectName, _prototype: OBJECT_PROTO };
   },
-  get:       (s: { name: string }, idx: number)             => vs.getObject(s.name)?.get(idx)             ?? null,
-  set:       (s: { name: string }, idx: number, v: LuaLike) => { vs.getObject(s.name)?.set(idx, v); },
-  execute:   (s: { name: string }, idx: number, ...a: LuaLike[]) => vs.getObject(s.name)?.execute(idx, ...a) ?? null,
-  add_event: (s: { name: string }, idx: number, fn: () => void)  => { vs.getObject(s.name)?.addEventHandler(idx, fn); },
+  get:       (self: { name: string }, index: number)                 => virtualSystem.getObject(self.name)?.get(index)                ?? null,
+  set:       (self: { name: string }, index: number, value: LuaLike) => { virtualSystem.getObject(self.name)?.set(index, value); },
+  execute:   (self: { name: string }, index: number, ...args: LuaLike[]) => virtualSystem.getObject(self.name)?.execute(index, ...args) ?? null,
+  add_event: (self: { name: string }, index: number, handler: () => void) => { virtualSystem.getObject(self.name)?.addEventHandler(index, handler); },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const GATE_PROTO: any = {
-  new: (_s: unknown, idx: number, _u: unknown, name: string) => {
-    vs.newGate(idx, name);
+  new: (_self: unknown, index: number, _unused: unknown, name: string) => {
+    virtualSystem.newGate(index, name);
     return { name, _prototype: GATE_PROTO };
   },
-  get:       (s: { name: string }, idx: number)             => vs.getObject(s.name)?.get(idx)             ?? null,
-  set:       (s: { name: string }, idx: number, v: LuaLike) => { vs.getObject(s.name)?.set(idx, v); },
-  execute:   (s: { name: string }, idx: number, ...a: LuaLike[]) => vs.getObject(s.name)?.execute(idx, ...a) ?? null,
-  add_event: (s: { name: string }, idx: number, fn: () => void)  => { vs.getObject(s.name)?.addEventHandler(idx, fn); },
+  get:       (self: { name: string }, index: number)                 => virtualSystem.getObject(self.name)?.get(index)                ?? null,
+  set:       (self: { name: string }, index: number, value: LuaLike) => { virtualSystem.getObject(self.name)?.set(index, value); },
+  execute:   (self: { name: string }, index: number, ...args: LuaLike[]) => virtualSystem.getObject(self.name)?.execute(index, ...args) ?? null,
+  add_event: (self: { name: string }, index: number, handler: () => void) => { virtualSystem.getObject(self.name)?.addEventHandler(index, handler); },
 };
 
 // ── SYSTEM global ─────────────────────────────────────────────────────────────
 const SYSTEM = {
   Init: () => {
-    vs.setup();
+    virtualSystem.setup();
     send({ type: 'started' });
   },
   Loop: () => {
-    vs.loop();
+    virtualSystem.loop();
 
     // Sleep up to 1ms. Wakes early if main thread writes STATE_PENDING (a luaCall arrived),
     // so luaCall latency is bounded without busy-spinning.
-    Atomics.wait(i32, 0, STATE_IDLE, 1);
+    Atomics.wait(sabWords, 0, STATE_IDLE, 1);
 
     handlePendingCall();
   },
-  Wait: (_s: unknown, ms: number) => {
+  Wait: (_self: unknown, waitMs: number) => {
     // Synchronous wait — Atomics.wait is allowed in Worker threads
-    if (ms > 0) Atomics.wait(i32, 0, STATE_IDLE, Math.max(1, Math.floor(ms)));
+    if (waitMs > 0) Atomics.wait(sabWords, 0, STATE_IDLE, Math.max(1, Math.floor(waitMs)));
   },
-  clientRegister: (_s: unknown, remoteAddr: string, addr: string, port: number, sid: number, subs: unknown) =>
-    vs.clientRegister(remoteAddr, addr, port, sid, parseSubs(subs)),
-  clientDestroy: (_s: unknown, addr: string, port: number, sid: number) =>
-    vs.clientDestroy(addr, port, sid),
-  fetchValues: (_s: unknown, subs: unknown) =>
-    `values:${vs.fetchValues(parseSubs(subs))}`,
+  clientRegister: (_self: unknown, remoteAddr: string, addr: string, port: number, sessionId: number, subscriptions: unknown) =>
+    virtualSystem.clientRegister(remoteAddr, addr, port, sessionId, parseSubscriptions(subscriptions)),
+  clientDestroy: (_self: unknown, addr: string, port: number, sessionId: number) =>
+    virtualSystem.clientDestroy(addr, port, sessionId),
+  fetchValues: (_self: unknown, subscriptions: unknown) =>
+    `values:${virtualSystem.fetchValues(parseSubscriptions(subscriptions))}`,
   mqttRegister: () => {},
   mqttDestroy:  () => {},
 };
@@ -195,12 +143,12 @@ const SYSTEM = {
 engine.global.set('SYSTEM',        SYSTEM);
 engine.global.set('OBJECT',        OBJECT_PROTO);
 engine.global.set('GATE',          GATE_PROTO);
-engine.global.set('logDebug',      (...a: unknown[]) => console.debug(...a));
-engine.global.set('logInfo',       (...a: unknown[]) => console.info(...a));
-engine.global.set('log',           (...a: unknown[]) => console.info(...a));
-engine.global.set('logWarning',    (...a: unknown[]) => console.warn(...a));
-engine.global.set('logError',      (...a: unknown[]) => console.error(...a));
-engine.global.set('print',         (...a: unknown[]) => console.info(...a));
+engine.global.set('logDebug',      (...args: unknown[]) => console.debug(...args));
+engine.global.set('logInfo',       (...args: unknown[]) => console.info(...args));
+engine.global.set('log',           (...args: unknown[]) => console.info(...args));
+engine.global.set('logWarning',    (...args: unknown[]) => console.warn(...args));
+engine.global.set('logError',      (...args: unknown[]) => console.error(...args));
+engine.global.set('print',         (...args: unknown[]) => console.info(...args));
 engine.global.set('collectgarbage', () => {});
 
 // Set package.path so `require "user"` resolves to /lua/user.lua
@@ -215,8 +163,60 @@ if (!existsSync(scriptPath)) {
 const luaScript = readFileSync(scriptPath, 'utf8');
 try {
   await engine.doString(luaScript);
-} catch (e: unknown) {
-  const msg = e instanceof Error ? e.message : String(e);
-  console.error('[LuaWorker] script error:', msg);
-  send({ type: 'error', kind: 'scriptError', message: msg });
+} catch (error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error('[LuaWorker] script error:', message);
+  send({ type: 'error', kind: 'scriptError', message });
+}
+
+function send(message: WorkerMessage): void {
+  parentPort!.postMessage(message);
+}
+
+// ── SAB luaCall handler ───────────────────────────────────────────────────────
+// Called each Lua tick (from SYSTEM.Loop).
+// Three-phase handshake with the main thread:
+//   1. Main writes script → sets STATE_PENDING → notifies worker
+//   2. Worker reads script, runs Lua, writes result → sets STATE_RESULT → notifies main
+//   3. Main reads result → sets STATE_IDLE → notifies worker  (releases buffer for reuse)
+// The final Atomics.wait(STATE_RESULT) keeps the worker blocked while main reads,
+// so the buffer is never overwritten before main is done with it.
+function handlePendingCall(): void {
+  if (Atomics.load(sabWords, 0) !== STATE_PENDING) return;
+
+  const scriptLength = Atomics.load(sabWords, 1);
+  const script = Buffer.from(sab, SCRIPT_OFFSET, scriptLength).toString('utf8');
+
+  let result = 'nil';
+  try {
+    const luaResult = engine.doStringSync(`return ${script}`) as LuaLike;
+    result = luaResult == null ? 'nil' : String(luaResult);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[LuaWorker] luaCall error:', message);
+  }
+
+  const resultBytes = Buffer.from(result, 'utf8');
+  sabBytes.set(resultBytes, RESULT_OFFSET);
+  Atomics.store(sabWords, 2, resultBytes.length);
+  Atomics.store(sabWords, 0, STATE_RESULT); // signal main thread: result is ready
+  Atomics.notify(sabWords, 0, 1);           // wake main thread's Atomics.waitAsync
+  Atomics.wait(sabWords, 0, STATE_RESULT);  // block until main resets to IDLE
+}
+
+// ── Lua subscription helper ───────────────────────────────────────────────────
+function parseSubscriptions(subscriptions: unknown): Subscription[] {
+  if (!subscriptions || typeof subscriptions !== 'object') return [];
+  const result: Subscription[] = [];
+  for (const entry of Object.values(subscriptions as Record<string, unknown>)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const pair  = Object.values(entry as Record<string, unknown>);
+    const objectRef = pair[0] as { name?: string } | null;
+    const index = pair[1] as number | null;
+    if (objectRef?.name == null || index == null) continue;
+    const virtualObject = virtualSystem.getObject(objectRef.name);
+    if (virtualObject == null) continue;
+    result.push({ object: virtualObject, index: Number(index) });
+  }
+  return result;
 }

@@ -3,10 +3,10 @@ import { parseBusTxFrame } from './TFBusFrame.js';
 import type { TFBusTransport } from './transport/SerialTransport.js';
 
 export interface SniffEvent {
-  ts: number;
-  dir: 'tx' | 'rx' | 'junk';
+  timestampMs: number;
+  direction: 'tx' | 'rx' | 'junk';
   hex: string;
-  addr: number;
+  address: number;
   type: number | null;
   event: 'tx' | 'status' | 'version' | 'ack' | 'response' | 'junk';
   data: object | null;
@@ -15,117 +15,117 @@ export interface SniffEvent {
 export interface SniffOptions {
   durationMs?: number;
   filter?: boolean;
-  addr?: number | null;
+  address?: number | null;
 }
 
-export async function sniffBus(transport: TFBusTransport, { durationMs = 5000, filter = true, addr = null }: SniffOptions = {}): Promise<SniffEvent[]> {
+export async function sniffBus(transport: TFBusTransport, { durationMs = 5000, filter = true, address = null }: SniffOptions = {}): Promise<SniffEvent[]> {
   const bus = new TFBusEventBus(transport);
   const events: SniffEvent[] = [];
   let lastRxBuf: Buffer | null = null;
 
-  bus.on('frame', ({ buf, dir }: FrameEvent) => {
-    if (dir === 'rx') {
-      lastRxBuf = buf;
+  bus.on('frame', ({ frame, direction }: FrameEvent) => {
+    if (direction === 'rx') {
+      lastRxBuf = frame;
       return;
     }
-    const f = parseBusTxFrame(buf);
+    const txFrame = parseBusTxFrame(frame);
     events.push({
-      ts: Date.now(),
-      dir: 'tx',
-      hex: buf.toString('hex'),
-      addr: buf[1],
-      type: buf[2],
+      timestampMs: Date.now(),
+      direction: 'tx',
+      hex: frame.toString('hex'),
+      address: frame[1],
+      type: frame[2],
       event: 'tx',
-      data: f?.payload.length ? { payload: f.payload.toString('hex') } : null,
+      data: txFrame?.payload.length ? { payload: txFrame.payload.toString('hex') } : null,
     });
   });
 
-  bus.on('status', ({ addr: a, records, raw }: StatusEvent) => {
+  bus.on('status', ({ address: moduleAddress, records, raw }: StatusEvent) => {
     events.push({
-      ts: Date.now(),
-      dir: 'rx',
+      timestampMs: Date.now(),
+      direction: 'rx',
       hex: lastRxBuf?.toString('hex') ?? raw.toString('hex'),
-      addr: a,
+      address: moduleAddress,
       type: 0x04,
       event: 'status',
       data: {
-        records: records?.map(r => ({
-          type: r.type,
-          meta: r.meta,
-          data: r.data.toString('hex'),
+        records: records?.map(record => ({
+          type: record.type,
+          meta: record.meta,
+          data: record.data.toString('hex'),
         })) ?? null,
       },
     });
   });
 
-  bus.on('version', ({ addr: a, version, raw }: VersionEvent) => {
+  bus.on('version', ({ address: moduleAddress, version, raw }: VersionEvent) => {
     events.push({
-      ts: Date.now(),
-      dir: 'rx',
+      timestampMs: Date.now(),
+      direction: 'rx',
       hex: lastRxBuf?.toString('hex') ?? raw.toString('hex'),
-      addr: a,
+      address: moduleAddress,
       type: 0xF9,
       event: 'version',
       data: version,
     });
   });
 
-  bus.on('ack', ({ addr: a }: AckEvent) => {
+  bus.on('ack', ({ address: moduleAddress }: AckEvent) => {
     events.push({
-      ts: Date.now(),
-      dir: 'rx',
+      timestampMs: Date.now(),
+      direction: 'rx',
       hex: lastRxBuf?.toString('hex') ?? '',
-      addr: a,
+      address: moduleAddress,
       type: null,
       event: 'ack',
       data: null,
     });
   });
 
-  bus.on('response', ({ addr: a, txType, records, raw }: ResponseEvent) => {
+  bus.on('response', ({ address: moduleAddress, txType, records, raw }: ResponseEvent) => {
     events.push({
-      ts: Date.now(),
-      dir: 'rx',
+      timestampMs: Date.now(),
+      direction: 'rx',
       hex: lastRxBuf?.toString('hex') ?? raw.toString('hex'),
-      addr: a,
+      address: moduleAddress,
       type: txType,
       event: 'response',
       data: {
         txType,
-        records: records?.map(r => ({
-          type: r.type,
-          meta: r.meta,
-          data: r.data.toString('hex'),
+        records: records?.map(record => ({
+          type: record.type,
+          meta: record.meta,
+          data: record.data.toString('hex'),
         })) ?? null,
       },
     });
   });
 
   bus.start();
-  await new Promise(r => setTimeout(r, durationMs));
+  await new Promise(resolveDelay => setTimeout(resolveDelay, durationMs));
   bus.stop();
 
   const result = filter ? filterIdle(events) : events;
-  return addr !== null ? result.filter(e => e.addr === addr) : result;
+  return address !== null ? result.filter(event => event.address === address) : result;
 }
 
 function filterIdle(events: SniffEvent[]): SniffEvent[] {
   const lastStatus = new Map<number, string>();
-  return events.filter(e => {
-    if (e.event === 'tx' && e.type === 0x04) return false;
-    if (e.event === 'status') {
-      const key = JSON.stringify((e.data as { records: unknown } | null)?.records ?? null);
-      if (lastStatus.get(e.addr) === key) return false;
-      lastStatus.set(e.addr, key);
+  return events.filter(event => {
+    if (event.event === 'tx' && event.type === 0x04) return false;
+    if (event.event === 'status') {
+      const key = JSON.stringify((event.data as { records: unknown } | null)?.records ?? null);
+      if (lastStatus.get(event.address) === key) return false;
+      lastStatus.set(event.address, key);
     }
     return true;
   });
 }
 
-// One "ms dir hex" line per frame, ms relative to the first event.
+// One "ms direction hex" line per frame, ms relative to the first event.
 export function formatCompact(events: SniffEvent[]): string {
-  const t0 = events[0]?.ts ?? 0;
-  return events.map(e => `${e.ts - t0} ${e.dir} ${e.hex}`).join('\n');
+  const firstTimestampMs = events[0]?.timestampMs ?? 0;
+  return events.map(event => `${event.timestampMs - firstTimestampMs} ${event.direction} ${event.hex}`).join('\n');
 }
 
 // Collects discarded bytes as 'junk' events (pass collector.onSkip to SerialTransport). Bytes
@@ -135,16 +135,16 @@ export function junkCollector(): { onSkip: (bytes: Buffer) => void; events: Snif
   const onSkip = (bytes: Buffer) => {
     const now = Date.now();
     const last = events[events.length - 1];
-    if (last && now - last.ts <= 5) {
+    if (last && now - last.timestampMs <= 5) {
       last.hex += bytes.toString('hex');
       return;
     }
-    events.push({ ts: now, dir: 'junk', hex: bytes.toString('hex'), addr: -1, type: null, event: 'junk', data: null });
+    events.push({ timestampMs: now, direction: 'junk', hex: bytes.toString('hex'), address: -1, type: null, event: 'junk', data: null });
   };
   return { onSkip, events };
 }
 
-// Merge two ts-sorted event lists.
-export function mergeEvents(a: SniffEvent[], b: SniffEvent[]): SniffEvent[] {
-  return [...a, ...b].sort((x, y) => x.ts - y.ts);
+// Merge two timestamp-sorted event lists.
+export function mergeEvents(firstEvents: SniffEvent[], secondEvents: SniffEvent[]): SniffEvent[] {
+  return [...firstEvents, ...secondEvents].sort((left, right) => left.timestampMs - right.timestampMs);
 }

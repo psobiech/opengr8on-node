@@ -66,44 +66,32 @@ const SYSTEM_XML = `<object-stream>
   </TreeObject>
 </object-stream>`;
 
-function omp(systemXml = SYSTEM_XML) {
-  const zip = new AdmZip();
-  zip.addFile('system.xml', Buffer.from(systemXml));
-  zip.addFile('.project', Buffer.from('<projectDescription><name>Test</name></projectDescription>'));
-  zip.addFile('properties.xml', Buffer.from('<object-stream><ProjectProperties><projectCipherKey><keyBytes>AAAA</keyBytes></projectCipherKey><gateway>10.0.0.1</gateway><netmask>255.255.255.0</netmask></ProjectProperties></object-stream>'));
-  zip.addFile('scripts/CLU_1/ELO.lua', Buffer.from('print(1)\r\n'));
-  zip.addFile('diagnostics/100000011/om.lua/1', Buffer.from('old'));
-  zip.addFile('diagnostics/100000011/om.lua/2', Buffer.from('new'));
-  zip.addFile('diagnostics/100000011/user.lua/1', Buffer.from(''));
-  return zip.toBuffer();
-}
-
 describe('readOmpProject', () => {
   it('finds a CLU first defined inside an IO and resolves references', () => {
-    const p = readOmpProject(omp());
-    assert.equal(p.name, 'Test');
-    assert.equal(p.clus.length, 1);
-    const c = p.clus[0];
+    const project = readOmpProject(omp());
+    assert.equal(project.name, 'Test');
+    assert.equal(project.clus.length, 1);
+    const clu = project.clus[0];
     assert.deepEqual(
-      [c.name, c.nameOnCLU, c.serialNumber, c.ipAddress, c.hardwareType, c.firmwareVersion, c.cipherKeyType],
+      [clu.name, clu.nameOnCLU, clu.serialNumber, clu.ipAddress, clu.hardwareType, clu.firmwareVersion, clu.cipherKeyType],
       ['CLU_1', 'CLU100000011', '5f5e10b', '10.0.0.11', '00000013', '00000203', 'PROJECT_KEY'],
     );
-    assert.deepEqual(c.features, [{ name: 'UseCloud', index: 18, initValue: '0', defaultInitValue: '1', paramType: 'BOOLEAN', accessType: 'ALL' }]);
-    assert.deepEqual(c.events, [{ name: 'OnInit', index: 0, commands: [] }]);
-    assert.deepEqual(c.modules.map(m => [m.moduleID, m.moduleClass, m.moduleTypeFirmware, m.moduleVersion]), [['330000009', '1a', '02', '02']]);
+    assert.deepEqual(clu.features, [{ name: 'UseCloud', index: 18, initValue: '0', defaultInitValue: '1', paramType: 'BOOLEAN', accessType: 'ALL' }]);
+    assert.deepEqual(clu.events, [{ name: 'OnInit', index: 0, commands: [] }]);
+    assert.deepEqual(clu.modules.map(moduleInfo => [moduleInfo.moduleID, moduleInfo.moduleClass, moduleInfo.moduleTypeFirmware, moduleInfo.moduleVersion]), [['330000009', '1a', '02', '02']]);
   });
 
   it('lists IOs in document order with module, features and event commands', () => {
-    const c = readOmpProject(omp()).clus[0];
-    assert.deepEqual(c.ios.map(io => [io.kind, io.nameOnCLU, io.number, io.classTypeId, io.isRemoved]), [
+    const clu = readOmpProject(omp()).clus[0];
+    assert.deepEqual(clu.ios.map(ioInfo => [ioInfo.kind, ioInfo.nameOnCLU, ioInfo.number, ioInfo.classTypeId, ioInfo.isRemoved]), [
       ['Output', 'DIM0001', '0', '5', 'false'],
       ['Input', 'BUT0001', '0', '7', undefined],
       ['Output', 'DIM0002', '1', '5', 'true'],
     ]);
-    const lamp = c.ios[0];
+    const lamp = clu.ios[0];
     assert.equal(lamp.module?.moduleID, '330000009');
-    assert.equal(c.ios[1].module?.moduleClass, '1a'); // via reference
-    assert.deepEqual(lamp.features.map(f => [f.name, f.index, f.initValue, f.accessType]), [['MinValue', 3, '0.32', 'ALL'], ['Value', 0, undefined, 'READ']]);
+    assert.equal(clu.ios[1].module?.moduleClass, '1a'); // via reference
+    assert.deepEqual(lamp.features.map(feature => [feature.name, feature.index, feature.initValue, feature.accessType]), [['MinValue', 3, '0.32', 'ALL'], ['Value', 0, undefined, 'READ']]);
     assert.deepEqual(lamp.events, [{ name: 'OnSwitchOn', index: 0, commands: ['CLU_1->LAMP2->Switch(0)', 'CLU_1->ELO()'] }]);
   });
 
@@ -123,12 +111,12 @@ describe('readOmpProject', () => {
       .replace('<parameters id="31"/>', '<parameters id="31"><ScriptParameter id="90"><name>dd</name><value>2</value><defaultValue>1</defaultValue><extendParamType id="91"><paramType>NUMBER</paramType><restrictionValues id="92"><string>1</string><string>10</string></restrictionValues><restrictionType>RANGE</restrictionType></extendParamType><unit/><divisor>1.0</divisor><optional>false</optional></ScriptParameter><ScriptParameter id="93"><name>txt</name><value>a</value><defaultValue>d</defaultValue><extendParamType id="94"><paramType>STRING</paramType></extendParamType><optional>false</optional></ScriptParameter></parameters>')
       .replace('<embeddedFeaturesList id="15">', '<definedFeaturesList id="95"><DefinedFeature id="96"><name>cecha</name><hint/><visible>true</visible><type id="97"><paramType>STRING</paramType></type><defaultValue>aas</defaultValue><currentValue/><persist>true</persist></DefinedFeature></definedFeaturesList><embeddedFeaturesList id="15">');
     assert.notEqual(xml, SYSTEM_XML);
-    const c = readOmpProject(omp(xml)).clus[0];
-    assert.deepEqual(c.scripts[0].parameters, [
+    const clu = readOmpProject(omp(xml)).clus[0];
+    assert.deepEqual(clu.scripts[0].parameters, [
       { name: 'dd', defaultValue: '1', value: '2', paramType: 'NUMBER', restrictionType: 'RANGE', restrictionValues: ['1', '10'], optional: 'false' },
       { name: 'txt', defaultValue: 'd', value: 'a', paramType: 'STRING', restrictionType: undefined, restrictionValues: [], optional: 'false' },
     ]);
-    assert.deepEqual(c.userFeatures, [{ name: 'cecha', paramType: 'STRING', defaultValue: 'aas', persist: 'true' }]);
+    assert.deepEqual(clu.userFeatures, [{ name: 'cecha', paramType: 'STRING', defaultValue: 'aas', persist: 'true' }]);
   });
 
   it('reads script sources from the archive', () => {
@@ -138,21 +126,33 @@ describe('readOmpProject', () => {
 
 describe('readOmpProject periphery', () => {
   it('reads virtual objects with features, events and the removed flag, in project order', () => {
-    const c = readOmpProject(omp()).clus[0];
-    assert.deepEqual(c.periphery.map(p => [p.name, p.nameOnCLU, p.typeName, p.typeId, p.typeVersion, p.isRemoved]), [
+    const clu = readOmpProject(omp()).clus[0];
+    assert.deepEqual(clu.periphery.map(project => [project.name, project.nameOnCLU, project.typeName, project.typeId, project.typeVersion, project.isRemoved]), [
       ['t', 'TIM0001', 'Timer', '6', '1', 'false'],
       ['hh', 'THE0001', 'Thermostat', '18', '2', 'true'],
     ]);
-    assert.deepEqual(c.periphery[0].features.map(f => [f.name, f.index, f.initValue]), [['Time', 0, '240']]);
-    assert.deepEqual(c.periphery[0].events, [{ name: 'OnTimer', index: 0, commands: ['CLU_1->ELO()'] }]);
-    assert.deepEqual(c.periphery[1].features.map(f => [f.name, f.paramType, f.initValue]), [['Source', 'TABLE', 'CLU_1->LAMP->Value']]);
+    assert.deepEqual(clu.periphery[0].features.map(feature => [feature.name, feature.index, feature.initValue]), [['Time', 0, '240']]);
+    assert.deepEqual(clu.periphery[0].events, [{ name: 'OnTimer', index: 0, commands: ['CLU_1->ELO()'] }]);
+    assert.deepEqual(clu.periphery[1].features.map(feature => [feature.name, feature.paramType, feature.initValue]), [['Source', 'TABLE', 'CLU_1->LAMP->Value']]);
   });
 });
 
 describe('readOmpDiagnostics', () => {
   it('returns the latest cached file per CLU serial', () => {
-    const d = readOmpDiagnostics(omp());
-    assert.equal(d.get('100000011')?.get('om.lua')?.toString(), 'new');
-    assert.equal(d.get('100000011')?.get('user.lua')?.length, 0);
+    const diagnostics = readOmpDiagnostics(omp());
+    assert.equal(diagnostics.get('100000011')?.get('om.lua')?.toString(), 'new');
+    assert.equal(diagnostics.get('100000011')?.get('user.lua')?.length, 0);
   });
 });
+
+function omp(systemXml = SYSTEM_XML) {
+  const zip = new AdmZip();
+  zip.addFile('system.xml', Buffer.from(systemXml));
+  zip.addFile('.project', Buffer.from('<projectDescription><name>Test</name></projectDescription>'));
+  zip.addFile('properties.xml', Buffer.from('<object-stream><ProjectProperties><projectCipherKey><keyBytes>AAAA</keyBytes></projectCipherKey><gateway>10.0.0.1</gateway><netmask>255.255.255.0</netmask></ProjectProperties></object-stream>'));
+  zip.addFile('scripts/CLU_1/ELO.lua', Buffer.from('print(1)\r\n'));
+  zip.addFile('diagnostics/100000011/om.lua/1', Buffer.from('old'));
+  zip.addFile('diagnostics/100000011/om.lua/2', Buffer.from('new'));
+  zip.addFile('diagnostics/100000011/user.lua/1', Buffer.from(''));
+  return zip.toBuffer();
+}

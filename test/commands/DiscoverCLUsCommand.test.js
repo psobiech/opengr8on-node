@@ -9,14 +9,6 @@ import { RANDOM_ENCRYPTED_BYTES, IV_BYTES, RANDOM_BYTES } from '../../dist/const
 
 const LOCAL_IP = '192.168.1.50';
 
-function makeRequest() {
-  const projectKey = CipherKey.random();
-  const randBuf = randomBytes(RANDOM_BYTES);
-  const encrypted = projectKey.encrypt(randBuf);
-  const iv = projectKey.getIV();
-  return { encrypted, iv, randBuf, projectKey };
-}
-
 describe('DiscoverCLUsCommand', () => {
   describe('hash', () => {
     it('returns buffer of same length as input', () => {
@@ -43,7 +35,7 @@ describe('DiscoverCLUsCommand', () => {
 
     it('produces all byte values in 0-255 range', () => {
       const result = hash(randomBytes(30));
-      for (const b of result) assert.ok(b >= 0 && b <= 255);
+      for (const byte of result) assert.ok(byte >= 0 && byte <= 255);
     });
   });
 
@@ -204,3 +196,11 @@ describe('DiscoverCLUsCommand', () => {
     });
   });
 });
+
+function makeRequest() {
+  const projectKey = CipherKey.random();
+  const randBuf = randomBytes(RANDOM_BYTES);
+  const encrypted = projectKey.encrypt(randBuf);
+  const iv = projectKey.getIV();
+  return { encrypted, iv, randBuf, projectKey };
+}

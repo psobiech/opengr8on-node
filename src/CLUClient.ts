@@ -102,7 +102,7 @@ export class CLUClient extends Client {
     await this._request(command);
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
       const alive = await this.checkAlive();
       if (alive) return true;
     }

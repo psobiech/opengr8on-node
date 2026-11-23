@@ -49,7 +49,7 @@ interface ModuleState {
 // ─── TLV decoding ─────────────────────────────────────────────────────────────
 
 const TLV_NAMES: Record<number, string> = Object.fromEntries(
-  Object.entries(TLVType).map(([k, v]) => [v as number, k]),
+  Object.entries(TLVType).map(([typeName, typeValue]) => [typeValue as number, typeName]),
 );
 
 // TLV type → object class IDs (tried in order) + how to label the record.
@@ -70,116 +70,7 @@ const TLV_HINTS: Record<number, TlvHint> = {
   [TLVType.ROLLER_POSITION]:  { classes: [24],      feature: 'State' },   // ROLLER_SHUTTER
 };
 
-function decodeValue(type: number, data: Buffer): string {
-  switch (type) {
-    case TLVType.TEMPERATURE:
-      return data.length >= 2 ? `${(data.readUInt16LE(0) / 100).toFixed(2)}°C` : data.toString('hex');
-    case TLVType.LIGHT:
-      return data.length >= 2 ? `${(data.readUInt16LE(0) / 100).toFixed(2)}%` : data.toString('hex');
-    case TLVType.ROLLER_POSITION:
-      return data.length >= 3
-        ? `ch${data[0]} ${data[1]}%${data[2] !== 0 ? ' moving' : ' stopped'}`
-        : data.toString('hex');
-    case TLVType.INPUT_BITMASK:
-      return `0b${data[0].toString(2).padStart(8, '0')}`;
-    case TLVType.STATE:
-      // 1-byte: relay on/off; 2-byte: dimmer level 0-1000 (×0.1%)
-      if (data.length >= 2) return `${(data.readUInt16LE(0) / 10).toFixed(1)}%`;
-      return data[0] === 0 ? 'idle' : 'active';
-    case TLVType.DIGITAL_STATE:
-      return data[0] === 0 ? 'idle' : 'active';
-    case TLVType.POLL_COUNTER:
-      return String(data[0]);
-    default:
-      return data.toString('hex');
-  }
-}
-
-function decodeTlvRecord(
-  record: { type: number; meta: number; data: Buffer },
-  entry: ModuleEntry | null,
-): string {
-  const fallback = TLV_NAMES[record.type] ?? `0x${record.type.toString(16).padStart(2, '0')}`;
-  const hint = TLV_HINTS[record.type];
-
-  if (!entry || !hint || hint.classes.length === 0) {
-    return `${fallback}: ${decodeValue(record.type, record.data)}`;
-  }
-
-  const obj = hint.classes.map((c) => entry.objects[c]).find(Boolean);
-  if (!obj) return `${fallback}: ${decodeValue(record.type, record.data)}`;
-
-  if (hint.isEvent) {
-    const val = record.data[0];
-    const btnIdx = Math.floor(val / 7);
-    const eventId = val % 7;
-    const ev = obj.events[eventId];
-    const label = ev ? `${obj.name}.${ev.name}` : `${obj.name}.event${eventId}`;
-    return `${label}: btn${btnIdx}`;
-  }
-
-  return `${obj.name}.${hint.feature ?? 'Value'}: ${decodeValue(record.type, record.data)}`;
-}
-
-// ─── Registry matching ────────────────────────────────────────────────────────
-
-function findInTranscript(transcript: ModuleTranscript, payload: Buffer): ModuleEntry | null {
-  if (payload.length < 3) return null;
-  return findInTranscriptByFields(transcript, payload[0], payload[2]);
-}
-
-function findInTranscriptByFields(transcript: ModuleTranscript, hwType: number, fwApiVer: number): ModuleEntry | null {
-  const byFwType = (transcript as Record<number, Record<number, Record<number, ModuleEntry>>>)[hwType];
-  if (!byFwType) return null;
-  for (const byFwApiVer of Object.values(byFwType)) {
-    const entry = byFwApiVer[fwApiVer];
-    if (entry) return entry;
-  }
-  const fallback = Object.values(Object.values(byFwType)[0] ?? {})[0];
-  return fallback ?? null;
-}
-
-// ─── OMP integration ─────────────────────────────────────────────────────────
-
-/** addr → pre-populated ModuleState from OMP data, or empty Map if no OMP. */
-function buildOmpIndex(
-  ompPath: string | undefined,
-  cluSerial: string | undefined,
-  transcript: ModuleTranscript,
-): Map<number, ModuleState> {
-  if (!ompPath) return new Map();
-  let modules;
-  try {
-    modules = readTFBusModules(ompPath);
-  } catch (e) {
-    process.stderr.write(`warn: failed to read OMP: ${(e as Error).message}\n`);
-    return new Map();
-  }
-  if (cluSerial) modules = modules.filter(m => m.cluSerial === cluSerial);
-  const map = new Map<number, ModuleState>();
-  for (const m of modules) {
-    const entry = findInTranscriptByFields(transcript, m.hwType, m.fwVer);
-    const ioLabel = m.ioNames.length > 0 ? m.ioNames[0] : null;
-    const name = ioLabel ?? entry?.name ?? `0x${m.serialHex}`;
-    map.set(m.addr, { addr: m.addr, versionBytes: null, version: null, entry, name });
-  }
-  return map;
-}
-
 // ─── Monitor ──────────────────────────────────────────────────────────────────
-
-function sleep(ms: number) { return new Promise<void>((r) => setTimeout(r, ms)); }
-function ts() { return new Date().toISOString().slice(11, 23); }
-
-// Active mode: dequeue next frame addressed exactly to myAddr, discard everything else.
-// If myAddr is unset, return any frame (no filter).
-async function dequeueRx(transport: TFBusTransport, myAddr?: number): Promise<Buffer | null> {
-  for (;;) {
-    const buf = await transport.dequeue();
-    if (buf === null) return null;
-    if (myAddr === undefined || buf[1] === myAddr) return buf;
-  }
-}
 
 export async function runMonitor(transport: TFBusTransport, options: MonitorOptions = {}): Promise<void> {
   const {
@@ -199,7 +90,7 @@ export async function runMonitor(transport: TFBusTransport, options: MonitorOpti
   const log = logger;
 
   const { output: transcript, errors } = transcribeModules(dir, { lang } satisfies TranscribeOptions);
-  for (const e of errors) process.stderr.write(`warn: ${e}\n`);
+  for (const error of errors) process.stderr.write(`warn: ${error}\n`);
 
   const ompModules = buildOmpIndex(ompPath, cluSerial, transcript);
 
@@ -228,27 +119,27 @@ export async function runMonitor(transport: TFBusTransport, options: MonitorOpti
 
   for (let addr = scanFrom; addr <= scanTo; addr++) {
     transport.enqueue(statusPollFrame(addr));
-    const pollBuf = await dequeueRx(transport, myAddr);
-    if (!pollBuf) continue;
+    const pollRawFrame = await dequeueRx(transport, myAddr);
+    if (!pollRawFrame) continue;
 
     let versionBytes: Buffer | null = null;
     let version: VersionQueryResponse | null = null;
     let entry: ModuleEntry | null = null;
 
     transport.enqueue(versionQueryFrame(addr));
-    const verBuf = await dequeueRx(transport, myAddr);
-    if (verBuf) {
-      const verFrame = parseRxFrame(verBuf);
-      if (verFrame && verFrame.payload.length > 0) {
-        versionBytes = verFrame.payload;
-        version = parseVersionResponse(verFrame.payload);
-        entry = findInTranscript(transcript, verFrame.payload);
+    const versionRawFrame = await dequeueRx(transport, myAddr);
+    if (versionRawFrame) {
+      const versionFrame = parseRxFrame(versionRawFrame);
+      if (versionFrame && versionFrame.payload.length > 0) {
+        versionBytes = versionFrame.payload;
+        version = parseVersionResponse(versionFrame.payload);
+        entry = findInTranscript(transcript, versionFrame.payload);
       }
     }
 
     const name = entry?.name ?? 'unknown';
-    const verStr = versionBytes ? ` [${versionBytes.toString('hex')}]` : '';
-    log(`  addr=${String(addr).padStart(2, '0')}  ${name}${verStr}`);
+    const versionSuffix = versionBytes ? ` [${versionBytes.toString('hex')}]` : '';
+    log(`  addr=${String(addr).padStart(2, '0')}  ${name}${versionSuffix}`);
     activeModules.set(addr, { addr, versionBytes, version, entry, name });
   }
 
@@ -264,28 +155,55 @@ export async function runMonitor(transport: TFBusTransport, options: MonitorOpti
 
     for (const info of activeModules.values()) {
       transport.enqueue(statusPollFrame(info.addr));
-      const buf = await dequeueRx(transport, myAddr);
-      if (!buf) continue;
+      const rawFrame = await dequeueRx(transport, myAddr);
+      if (!rawFrame) continue;
 
-      const frame = parseRxFrame(buf);
+      const frame = parseRxFrame(rawFrame);
       if (!frame) continue;
 
       const { records, raw } = parseStatusPoll(frame.payload);
 
       if (records === null) {
-        log(`[${ts()}] addr=${String(info.addr).padStart(2, '0')} ${info.name} | raw: ${raw.toString('hex')}`);
+        log(`[${timestamp()}] addr=${String(info.addr).padStart(2, '0')} ${info.name} | raw: ${raw.toString('hex')}`);
         continue;
       }
       if (records.length === 0) continue;
 
-      const decoded = records.map((r: { type: number; meta: number; data: Buffer }) => decodeTlvRecord(r, info.entry)).join(' | ');
-      log(`[${ts()}] addr=${String(info.addr).padStart(2, '0')} ${info.name} | ${decoded}`);
+      const decoded = records.map((record: { type: number; meta: number; data: Buffer }) => decodeTlvRecord(record, info.entry)).join(' | ');
+      log(`[${timestamp()}] addr=${String(info.addr).padStart(2, '0')} ${info.name} | ${decoded}`);
     }
 
     const elapsed = Date.now() - cycleStart;
     const wait = Math.max(0, pollIntervalMs - elapsed);
     if (wait > 0) await sleep(wait);
   }
+}
+
+// ─── OMP integration ─────────────────────────────────────────────────────────
+
+/** addr → pre-populated ModuleState from OMP data, or empty Map if no OMP. */
+function buildOmpIndex(
+  ompPath: string | undefined,
+  cluSerial: string | undefined,
+  transcript: ModuleTranscript,
+): Map<number, ModuleState> {
+  if (!ompPath) return new Map();
+  let modules;
+  try {
+    modules = readTFBusModules(ompPath);
+  } catch (error) {
+    process.stderr.write(`warn: failed to read OMP: ${(error as Error).message}\n`);
+    return new Map();
+  }
+  if (cluSerial) modules = modules.filter(ompModule => ompModule.cluSerial === cluSerial);
+  const map = new Map<number, ModuleState>();
+  for (const ompModule of modules) {
+    const entry = findInTranscriptByFields(transcript, ompModule.hwType, ompModule.fwVer);
+    const ioLabel = ompModule.ioNames.length > 0 ? ompModule.ioNames[0] : null;
+    const name = ioLabel ?? entry?.name ?? `0x${ompModule.serialHex}`;
+    map.set(ompModule.addr, { addr: ompModule.addr, versionBytes: null, version: null, entry, name });
+  }
+  return map;
 }
 
 // ─── Passive loop ─────────────────────────────────────────────────────────────
@@ -301,21 +219,21 @@ async function runPassiveLoop(
   let lastTxAddr: number | null = null;
 
   for (;;) {
-    const buf = await transport.dequeue();
-    if (buf === null) continue;
-    if (buf.length < 4 || buf[0] !== 0xAA) continue;
+    const rawFrame = await transport.dequeue();
+    if (rawFrame === null) continue;
+    if (rawFrame.length < 4 || rawFrame[0] !== 0xAA) continue;
 
-    if (buf[1] !== 0x00) {
+    if (rawFrame[1] !== 0x00) {
       // CLU TX frame — track context for upcoming module response
-      const txf = parseBusTxFrame(buf);
-      if (txf) { lastTxType = txf.type; lastTxAddr = txf.dest; }
+      const txFrame = parseBusTxFrame(rawFrame);
+      if (txFrame) { lastTxType = txFrame.type; lastTxAddr = txFrame.dest; }
       continue;
     }
 
     // Module RX response (dest = 0x00)
     if (lastTxAddr === null) continue;
     const addr = lastTxAddr;
-    const rxFrame = parseRxFrame(buf);
+    const rxFrame = parseRxFrame(rawFrame);
     if (!rxFrame) continue;
 
     if (lastTxType === 0xF9) {
@@ -325,9 +243,9 @@ async function runPassiveLoop(
         const entry = version ? findInTranscript(transcript, rxFrame.payload) : null;
         const existing = activeModules.get(addr);
         const name = entry?.name ?? existing?.name ?? 'unknown';
-        const verStr = rxFrame.payload.length > 0 ? ` [${rxFrame.payload.toString('hex')}]` : '';
+        const versionSuffix = rxFrame.payload.length > 0 ? ` [${rxFrame.payload.toString('hex')}]` : '';
         activeModules.set(addr, { addr, versionBytes: rxFrame.payload, version, entry: entry ?? existing?.entry ?? null, name });
-        log(`  addr=${String(addr).padStart(2, '0')}  ${name}${verStr}`);
+        log(`  addr=${String(addr).padStart(2, '0')}  ${name}${versionSuffix}`);
       }
     } else if (lastTxType === 0x04) {
       // STATUS_POLL response
@@ -338,11 +256,96 @@ async function runPassiveLoop(
       const { records, raw } = parseStatusPoll(rxFrame.payload);
 
       if (records === null) {
-        log(`[${ts()}] addr=${String(addr).padStart(2, '0')} ${info.name} | raw: ${raw.toString('hex')}`);
+        log(`[${timestamp()}] addr=${String(addr).padStart(2, '0')} ${info.name} | raw: ${raw.toString('hex')}`);
       } else if (records.length > 0) {
-        const decoded = records.map((r: { type: number; meta: number; data: Buffer }) => decodeTlvRecord(r, info.entry)).join(' | ');
-        log(`[${ts()}] addr=${String(addr).padStart(2, '0')} ${info.name} | ${decoded}`);
+        const decoded = records.map((record: { type: number; meta: number; data: Buffer }) => decodeTlvRecord(record, info.entry)).join(' | ');
+        log(`[${timestamp()}] addr=${String(addr).padStart(2, '0')} ${info.name} | ${decoded}`);
       }
     }
+  }
+}
+
+function sleep(ms: number) { return new Promise<void>((resolveSleep) => setTimeout(resolveSleep, ms)); }
+
+// Active mode: dequeue next frame addressed exactly to myAddr, discard everything else.
+// If myAddr is unset, return any frame (no filter).
+async function dequeueRx(transport: TFBusTransport, myAddr?: number): Promise<Buffer | null> {
+  for (;;) {
+    const rawFrame = await transport.dequeue();
+    if (rawFrame === null) return null;
+    if (myAddr === undefined || rawFrame[1] === myAddr) return rawFrame;
+  }
+}
+
+// ─── Registry matching ────────────────────────────────────────────────────────
+
+function findInTranscript(transcript: ModuleTranscript, payload: Buffer): ModuleEntry | null {
+  if (payload.length < 3) return null;
+  return findInTranscriptByFields(transcript, payload[0], payload[2]);
+}
+
+function findInTranscriptByFields(transcript: ModuleTranscript, hwType: number, fwApiVer: number): ModuleEntry | null {
+  const byFwType = (transcript as Record<number, Record<number, Record<number, ModuleEntry>>>)[hwType];
+  if (!byFwType) return null;
+  for (const byFwApiVer of Object.values(byFwType)) {
+    const entry = byFwApiVer[fwApiVer];
+    if (entry) return entry;
+  }
+  const fallback = Object.values(Object.values(byFwType)[0] ?? {})[0];
+  return fallback ?? null;
+}
+
+function timestamp() { return new Date().toISOString().slice(11, 23); }
+
+// ─── TLV record formatting ────────────────────────────────────────────────────
+
+function decodeTlvRecord(
+  record: { type: number; meta: number; data: Buffer },
+  entry: ModuleEntry | null,
+): string {
+  const fallback = TLV_NAMES[record.type] ?? `0x${record.type.toString(16).padStart(2, '0')}`;
+  const hint = TLV_HINTS[record.type];
+
+  if (!entry || !hint || hint.classes.length === 0) {
+    return `${fallback}: ${decodeValue(record.type, record.data)}`;
+  }
+
+  const objectEntry = hint.classes.map((objectClass) => entry.objects[objectClass]).find(Boolean);
+  if (!objectEntry) return `${fallback}: ${decodeValue(record.type, record.data)}`;
+
+  if (hint.isEvent) {
+    const eventCode = record.data[0];
+    const btnIdx = Math.floor(eventCode / 7);
+    const eventId = eventCode % 7;
+    const eventDefinition = objectEntry.events[eventId];
+    const label = eventDefinition ? `${objectEntry.name}.${eventDefinition.name}` : `${objectEntry.name}.event${eventId}`;
+    return `${label}: btn${btnIdx}`;
+  }
+
+  return `${objectEntry.name}.${hint.feature ?? 'Value'}: ${decodeValue(record.type, record.data)}`;
+}
+
+function decodeValue(type: number, data: Buffer): string {
+  switch (type) {
+    case TLVType.TEMPERATURE:
+      return data.length >= 2 ? `${(data.readUInt16LE(0) / 100).toFixed(2)}°C` : data.toString('hex');
+    case TLVType.LIGHT:
+      return data.length >= 2 ? `${(data.readUInt16LE(0) / 100).toFixed(2)}%` : data.toString('hex');
+    case TLVType.ROLLER_POSITION:
+      return data.length >= 3
+        ? `ch${data[0]} ${data[1]}%${data[2] !== 0 ? ' moving' : ' stopped'}`
+        : data.toString('hex');
+    case TLVType.INPUT_BITMASK:
+      return `0b${data[0].toString(2).padStart(8, '0')}`;
+    case TLVType.STATE:
+      // 1-byte: relay on/off; 2-byte: dimmer level 0-1000 (×0.1%)
+      if (data.length >= 2) return `${(data.readUInt16LE(0) / 10).toFixed(1)}%`;
+      return data[0] === 0 ? 'idle' : 'active';
+    case TLVType.DIGITAL_STATE:
+      return data[0] === 0 ? 'idle' : 'active';
+    case TLVType.POLL_COUNTER:
+      return String(data[0]);
+    default:
+      return data.toString('hex');
   }
 }

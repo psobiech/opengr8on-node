@@ -26,25 +26,25 @@ export class VirtualObject extends EventEmitter {
     return this._name;
   }
 
-  set name(v: string) {
-    this._name = v;
+  set name(newName: string) {
+    this._name = newName;
   }
 
   /**
    * Register a bidirectional feature.
-   * fn(undefined) → getter: return current/computed value.
-   * fn(value) → setter: return the value to store.
+   * featureFn(undefined) → getter: return current/computed value.
+   * featureFn(value) → setter: return the value to store.
    */
-  registerFeature(index: number, fn: FeatureFn): void {
-    this._featureFns.set(index, fn);
-    const initial = fn(undefined);
+  registerFeature(index: number, featureFn: FeatureFn): void {
+    this._featureFns.set(index, featureFn);
+    const initial = featureFn(undefined);
     if (initial !== undefined) this._featureValues.set(index, initial);
   }
 
   get(index: number): LuaLike {
-    const fn = this._featureFns.get(index);
-    if (fn !== undefined) {
-      const val = fn(undefined);
+    const featureFn = this._featureFns.get(index);
+    if (featureFn !== undefined) {
+      const val = featureFn(undefined);
       if (val !== undefined) this._featureValues.set(index, val);
       return this._featureValues.get(index) ?? null;
     }
@@ -52,9 +52,9 @@ export class VirtualObject extends EventEmitter {
   }
 
   set(index: number, value: LuaLike): void {
-    const fn = this._featureFns.get(index);
-    if (fn !== undefined) {
-      const result = fn(value);
+    const featureFn = this._featureFns.get(index);
+    if (featureFn !== undefined) {
+      const result = featureFn(value);
       this._featureValues.set(index, result !== undefined ? result : value);
     } else {
       this._featureValues.set(index, value);
@@ -73,27 +73,27 @@ export class VirtualObject extends EventEmitter {
     this._featureValues.delete(index);
   }
 
-  registerMethod(index: number, fn: MethodFn): void {
-    this._methods.set(index, fn);
+  registerMethod(index: number, methodFn: MethodFn): void {
+    this._methods.set(index, methodFn);
   }
 
   execute(index: number, ...args: LuaLike[]): LuaLike {
-    const fn = this._methods.get(index);
-    if (fn === undefined) return null;
+    const methodFn = this._methods.get(index);
+    if (methodFn === undefined) return null;
     try {
-      return fn(...args);
-    } catch (e) {
-      console.error(`[${this._name}] execute(${index}) error:`, e);
+      return methodFn(...args);
+    } catch (error) {
+      console.error(`[${this._name}] execute(${index}) error:`, error);
       return null;
     }
   }
 
-  addEventHandler(address: number, fn: EventHandler): void {
+  addEventHandler(address: number, handler: EventHandler): void {
     const existing = this._eventHandlers.get(address);
     if (existing !== undefined) {
-      existing.push(fn);
+      existing.push(handler);
     } else {
-      this._eventHandlers.set(address, [fn]);
+      this._eventHandlers.set(address, [handler]);
     }
   }
 
@@ -103,8 +103,8 @@ export class VirtualObject extends EventEmitter {
   }
 
   async awaitEventTrigger(address: number): Promise<void> {
-    const p = this._pendingEvents.get(address);
-    if (p !== undefined) await p;
+    const pending = this._pendingEvents.get(address);
+    if (pending !== undefined) await pending;
   }
 
   /** Run event handlers for address, serialising against any previous trigger. Returns Promise that resolves when all handlers complete. */
@@ -113,24 +113,24 @@ export class VirtualObject extends EventEmitter {
     if (handlers.length === 0) return Promise.resolve();
 
     const prev = this._pendingEvents.get(address) ?? Promise.resolve();
-    const p = prev
+    const pending = prev
       .then(async () => {
-        for (const h of handlers) {
+        for (const handler of handlers) {
           try {
-            await h();
-          } catch (e) {
-            console.error(`[${this._name}] event address=${address} handler error:`, e);
+            await handler();
+          } catch (error) {
+            console.error(`[${this._name}] event address=${address} handler error:`, error);
           }
         }
       })
       .finally(() => {
-        if (this._pendingEvents.get(address) === p) {
+        if (this._pendingEvents.get(address) === pending) {
           this._pendingEvents.delete(address);
         }
       });
 
-    this._pendingEvents.set(address, p);
-    return p;
+    this._pendingEvents.set(address, pending);
+    return pending;
   }
 
   /** Fire event handlers asynchronously. Returns true if any handlers are registered. */

@@ -86,9 +86,9 @@ export function readOrGenerateDeviceConfig(aDriveDirectory: string, macAddress: 
     const raw = JSON.parse(readFileSync(configJsonPath, 'utf8')) as CLUDeviceConfig;
     config = { ...raw, mac: macAddress };
   } else {
-    const sn = Number(BigInt('0x' + randomBytes(4).toString('hex')));
+    const serialNumber = Number(BigInt('0x' + randomBytes(4).toString('hex')));
     config = {
-      sn,
+      sn:           serialNumber,
       mac:          macAddress,
       hwType:       HARDWARE_TYPE,
       hwVer:        HARDWARE_VERSION,
@@ -108,8 +108,8 @@ export function writeDeviceConfig(aDriveDirectory: string, config: CLUDeviceConf
   mkdirSync(aDriveDirectory, { recursive: true });
   writeFileSync(resolve(aDriveDirectory, 'CONFIG.JSON'), JSON.stringify(config), 'utf8');
 
-  const hex = (n: number, bytes = 4) =>
-    n.toString(16).toLowerCase().padStart(bytes * 2, '0');
+  const hex = (value: number, bytes = 4) =>
+    value.toString(16).toLowerCase().padStart(bytes * 2, '0');
 
   const macHex = config.mac.toLowerCase().replace(/[^0-9a-f]/g, '').padStart(12, '0')
     .match(/.{2}/g)!.join(':');

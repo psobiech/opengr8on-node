@@ -127,8 +127,8 @@ export class Server {
         await thread.start(this._opts.mainLuaPath, false, vsOptions, aDriveDirectory);
         this._luaThread = thread;
         await this._validateCheckAlive();
-      } catch (e) {
-        console.error('[Server] Failed to start Lua thread, entering emergency mode:', e);
+      } catch (error) {
+        console.error('[Server] Failed to start Lua thread, entering emergency mode:', error);
         thread.close();
         this._luaThread = null;
 
@@ -141,8 +141,8 @@ export class Server {
           await emergencyThread.start(emergencyPath, true, vsOptions, aDriveDirectory);
           this._luaThread = emergencyThread;
           console.warn('[Server] Emergency mode active — CLU state may not be OK');
-        } catch (e2) {
-          console.error('[Server] Emergency Lua thread also failed:', e2);
+        } catch (fallbackError) {
+          console.error('[Server] Emergency Lua thread also failed:', fallbackError);
           this._vs.setup();
           this._vs.getVirtualClu().setState(CLU_STATE.EMERGENCY);
           this._vs.startLoop();
@@ -292,8 +292,8 @@ export class Server {
 
       // Unknown — send error
       this._sendEncrypted(usedKey, ErrorCommand.response().toBuffer(), fromAddr, fromPort);
-    } catch (e) {
-      console.error('[Server] dispatch error:', e);
+    } catch (error) {
+      console.error('[Server] dispatch error:', error);
     }
   }
 
@@ -443,8 +443,8 @@ export class Server {
         pin:       (this._opts.pin ?? Buffer.alloc(0)).toString('base64'),
       };
       writeFileSync(keysPath, JSON.stringify(data), 'utf8');
-    } catch (e) {
-      console.error('[Server] persist keys error:', e);
+    } catch (error) {
+      console.error('[Server] persist keys error:', error);
     }
   }
 
@@ -458,9 +458,9 @@ export class Server {
       };
       const result: Partial<Pick<ServerOptions, 'projectKey' | 'projectIV'>> = {};
       // Support both Java format (key/iv) and legacy Node format (projectKey/projectIV)
-      const k = data.key ?? data.projectKey;
+      const key = data.key ?? data.projectKey;
       const iv = data.iv ?? data.projectIV;
-      if (k)  result.projectKey = Buffer.from(k,  'base64');
+      if (key) result.projectKey = Buffer.from(key, 'base64');
       if (iv) result.projectIV  = Buffer.from(iv, 'base64');
       return result;
     } catch {
@@ -474,8 +474,8 @@ export class Server {
     try {
       await this._tftpServer.start();
       console.info(`[Server] TFTP server started on port ${this._tftpServer.port}`);
-    } catch (e) {
-      console.error('[Server] TFTP start error:', e);
+    } catch (error) {
+      console.error('[Server] TFTP start error:', error);
       this._tftpServer = null;
     }
   }

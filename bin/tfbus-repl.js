@@ -4,7 +4,6 @@ import { SerialTransport } from '../dist/tfbus/transport/SerialTransport.js';
 import { runRepl } from '../dist/tfbus/repl.js';
 
 const args = process.argv.slice(2);
-function argValue(flag) { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : null; }
 
 const port = argValue('--port');
 if (!port) {
@@ -37,3 +36,8 @@ await runRepl(transport, {
 });
 
 await transport.close();
+
+function argValue(flag) {
+  const flagIdx = args.indexOf(flag);
+  return flagIdx !== -1 ? args[flagIdx + 1] : null;
+}

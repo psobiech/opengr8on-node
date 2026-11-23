@@ -45,12 +45,12 @@ if (arg) {
     process.exit(1);
   }
 } else {
-  const ifaces = getLocalIPv4Interfaces();
-  if (ifaces.length === 0) {
+  const localInterfaces = getLocalIPv4Interfaces();
+  if (localInterfaces.length === 0) {
     console.error('[vclu] No network interfaces found');
     process.exit(1);
   }
-  networkInterface = ifaces[0];
+  networkInterface = localInterfaces[0];
 }
 console.info(`[vclu] Interface: ${networkInterface.name} (${networkInterface.address})`);
 
@@ -86,13 +86,13 @@ const server = new Server({
 
 await server.start();
 
-const shutdown = () => {
-  console.info('[vclu] Shutting down...');
-  server.close();
-  process.exit(0);
-};
-
 process.on('SIGINT',  shutdown);
 process.on('SIGTERM', shutdown);
 
 console.info('[vclu] Running. Press Ctrl+C to stop.');
+
+function shutdown() {
+  console.info('[vclu] Shutting down...');
+  server.close();
+  process.exit(0);
+}

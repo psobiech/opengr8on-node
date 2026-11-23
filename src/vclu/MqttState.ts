@@ -30,21 +30,21 @@ export interface MqttRgbwState extends MqttState {
   color: RgbwColor;
 }
 
-export function mqttRgbwState(r: number, g: number, b: number, w: number): MqttRgbwState {
-  const on = r + g + b + w > 0;
+export function mqttRgbwState(red: number, green: number, blue: number, white: number): MqttRgbwState {
+  const isOn = red + green + blue + white > 0;
   return {
-    state: on ? 'ON' : 'OFF',
+    state: isOn ? 'ON' : 'OFF',
     color_mode: 'rgbw',
-    brightness: Math.max(r, g, b, w),
-    color: { r, g, b, w },
+    brightness: Math.max(red, green, blue, white),
+    color: { r: red, g: green, b: blue, w: white },
   };
 }
 
 export type ShutterState = 'OPEN' | 'OPENING' | 'CLOSE' | 'CLOSING' | 'STOP';
 
-export function parseShutterState(s: string): ShutterState | null {
-  const u = s.toUpperCase() as ShutterState;
-  return (['OPEN', 'OPENING', 'CLOSE', 'CLOSING', 'STOP'] as ShutterState[]).includes(u) ? u : null;
+export function parseShutterState(rawState: string): ShutterState | null {
+  const upperState = rawState.toUpperCase() as ShutterState;
+  return (['OPEN', 'OPENING', 'CLOSE', 'CLOSING', 'STOP'] as ShutterState[]).includes(upperState) ? upperState : null;
 }
 
 export interface MqttPosition {

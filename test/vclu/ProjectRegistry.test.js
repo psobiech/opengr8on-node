@@ -143,71 +143,71 @@ describe('ProjectRegistry', () => {
   });
 
   describe('parseXml - CLU extraction', () => {
-    let r;
-    before(() => { r = ProjectRegistry.parseXml(SYSTEM_XML, ''); });
+    let registry;
+    before(() => { registry = ProjectRegistry.parseXml(SYSTEM_XML, ''); });
 
-    it('not empty', () => assert.ok(!r.isEmpty()));
+    it('not empty', () => assert.ok(!registry.isEmpty()));
 
-    it('two CLUs', () => assert.equal(r.getClus().length, 2));
+    it('two CLUs', () => assert.equal(registry.getClus().length, 2));
 
     it('getClu by name', () => {
-      assert.ok(r.getClu('MyCLU') !== null);
-      assert.ok(r.getClu('SecondCLU') !== null);
+      assert.ok(registry.getClu('MyCLU') !== null);
+      assert.ok(registry.getClu('SecondCLU') !== null);
     });
 
     it('getClu unknown returns null', () => {
-      assert.equal(r.getClu('UNKNOWN'), null);
+      assert.equal(registry.getClu('UNKNOWN'), null);
     });
 
     it('MyCLU ipAddress', () => {
-      assert.equal(r.getClu('MyCLU')?.ipAddress, '192.168.1.10');
+      assert.equal(registry.getClu('MyCLU')?.ipAddress, '192.168.1.10');
     });
 
     it('MyCLU nameOnClu', () => {
-      assert.equal(r.getClu('MyCLU')?.nameOnClu, 'CLU_MAIN');
+      assert.equal(registry.getClu('MyCLU')?.nameOnClu, 'CLU_MAIN');
     });
 
     it('MyCLU serialNumber', () => {
-      assert.equal(r.getClu('MyCLU')?.serialNumber, '12345678');
+      assert.equal(registry.getClu('MyCLU')?.serialNumber, '12345678');
     });
 
     it('MyCLU macAddress', () => {
-      assert.equal(r.getClu('MyCLU')?.macAddress, 'AA:BB:CC:DD:EE:FF');
+      assert.equal(registry.getClu('MyCLU')?.macAddress, 'AA:BB:CC:DD:EE:FF');
     });
 
     it('SecondCLU has no serialNumber', () => {
-      assert.equal(r.getClu('SecondCLU')?.serialNumber, undefined);
+      assert.equal(registry.getClu('SecondCLU')?.serialNumber, undefined);
     });
 
     it('getCluByIp finds by IP', () => {
-      const clu = r.getCluByIp('192.168.1.10');
+      const clu = registry.getCluByIp('192.168.1.10');
       assert.ok(clu !== null);
       assert.equal(clu.name, 'MyCLU');
     });
 
     it('getCluByIp returns null for unknown IP', () => {
-      assert.equal(r.getCluByIp('10.0.0.99'), null);
+      assert.equal(registry.getCluByIp('10.0.0.99'), null);
     });
   });
 
   describe('parseXml - device objects', () => {
-    let r;
-    before(() => { r = ProjectRegistry.parseXml(SYSTEM_XML, ''); });
+    let registry;
+    before(() => { registry = ProjectRegistry.parseXml(SYSTEM_XML, ''); });
 
     it('MyCLU has two objects', () => {
-      assert.equal(r.getObjectsForClu('MyCLU').length, 2);
+      assert.equal(registry.getObjectsForClu('MyCLU').length, 2);
     });
 
     it('SecondCLU has zero objects', () => {
-      assert.equal(r.getObjectsForClu('SecondCLU').length, 0);
+      assert.equal(registry.getObjectsForClu('SecondCLU').length, 0);
     });
 
     it('getObjectsForClu unknown CLU returns []', () => {
-      assert.deepEqual(r.getObjectsForClu('NONE'), []);
+      assert.deepEqual(registry.getObjectsForClu('NONE'), []);
     });
 
     it('getObjectOnClu DIM_1', () => {
-      const obj = r.getObjectOnClu('MyCLU', 'DIM_1');
+      const obj = registry.getObjectOnClu('MyCLU', 'DIM_1');
       assert.ok(obj !== null);
       assert.equal(obj.name, 'Dimmer1');
       assert.equal(obj.typeName, 'DimmerModule');
@@ -215,130 +215,130 @@ describe('ProjectRegistry', () => {
     });
 
     it('getObjectOnClu SW_1', () => {
-      const obj = r.getObjectOnClu('MyCLU', 'SW_1');
+      const obj = registry.getObjectOnClu('MyCLU', 'SW_1');
       assert.ok(obj !== null);
       assert.equal(obj.name, 'Switch1');
       assert.equal(obj.typeId, 10);
     });
 
     it('getObjectOnClu unknown nameOnClu returns null', () => {
-      assert.equal(r.getObjectOnClu('MyCLU', 'UNKNOWN'), null);
+      assert.equal(registry.getObjectOnClu('MyCLU', 'UNKNOWN'), null);
     });
 
     it('cluName set on device object', () => {
-      assert.equal(r.getObjectOnClu('MyCLU', 'DIM_1')?.cluName, 'MyCLU');
+      assert.equal(registry.getObjectOnClu('MyCLU', 'DIM_1')?.cluName, 'MyCLU');
     });
   });
 
   describe('parseXml - features', () => {
-    let r;
-    before(() => { r = ProjectRegistry.parseXml(SYSTEM_XML, ''); });
+    let registry;
+    before(() => { registry = ProjectRegistry.parseXml(SYSTEM_XML, ''); });
 
     it('DIM_1 has 2 features', () => {
-      assert.equal(r.getObjectOnClu('MyCLU', 'DIM_1')?.features.length, 2);
+      assert.equal(registry.getObjectOnClu('MyCLU', 'DIM_1')?.features.length, 2);
     });
 
     it('BRIGHTNESS: accessGet=true, accessSet=true (ALL)', () => {
-      const f = r.getObjectOnClu('MyCLU', 'DIM_1')?.features.find((x) => x.name === 'BRIGHTNESS');
-      assert.ok(f);
-      assert.equal(f.index, 0);
-      assert.equal(f.accessGet, true);
-      assert.equal(f.accessSet, true);
-      assert.equal(f.type, 'NUMBER');
+      const feature = registry.getObjectOnClu('MyCLU', 'DIM_1')?.features.find((candidate) => candidate.name === 'BRIGHTNESS');
+      assert.ok(feature);
+      assert.equal(feature.index, 0);
+      assert.equal(feature.accessGet, true);
+      assert.equal(feature.accessSet, true);
+      assert.equal(feature.type, 'NUMBER');
     });
 
     it('STATE: accessGet=true, accessSet=false (READ)', () => {
-      const f = r.getObjectOnClu('MyCLU', 'DIM_1')?.features.find((x) => x.name === 'STATE');
-      assert.ok(f);
-      assert.equal(f.index, 1);
-      assert.equal(f.accessGet, true);
-      assert.equal(f.accessSet, false);
+      const feature = registry.getObjectOnClu('MyCLU', 'DIM_1')?.features.find((candidate) => candidate.name === 'STATE');
+      assert.ok(feature);
+      assert.equal(feature.index, 1);
+      assert.equal(feature.accessGet, true);
+      assert.equal(feature.accessSet, false);
     });
 
     it('VALUE: accessGet=false, accessSet=true (WRITE)', () => {
-      const f = r.getObjectOnClu('MyCLU', 'SW_1')?.features.find((x) => x.name === 'VALUE');
-      assert.ok(f);
-      assert.equal(f.accessGet, false);
-      assert.equal(f.accessSet, true);
-      assert.equal(f.type, 'STRING');
+      const feature = registry.getObjectOnClu('MyCLU', 'SW_1')?.features.find((candidate) => candidate.name === 'VALUE');
+      assert.ok(feature);
+      assert.equal(feature.accessGet, false);
+      assert.equal(feature.accessSet, true);
+      assert.equal(feature.type, 'STRING');
     });
   });
 
   describe('parseXml - events', () => {
-    let r;
-    before(() => { r = ProjectRegistry.parseXml(SYSTEM_XML, ''); });
+    let registry;
+    before(() => { registry = ProjectRegistry.parseXml(SYSTEM_XML, ''); });
 
     it('DIM_1 has 1 event', () => {
-      assert.equal(r.getObjectOnClu('MyCLU', 'DIM_1')?.events.length, 1);
+      assert.equal(registry.getObjectOnClu('MyCLU', 'DIM_1')?.events.length, 1);
     });
 
     it('CHANGED event name and index', () => {
-      const e = r.getObjectOnClu('MyCLU', 'DIM_1')?.events[0];
-      assert.ok(e);
-      assert.equal(e.name, 'CHANGED');
-      assert.equal(e.index, 0);
+      const event = registry.getObjectOnClu('MyCLU', 'DIM_1')?.events[0];
+      assert.ok(event);
+      assert.equal(event.name, 'CHANGED');
+      assert.equal(event.index, 0);
     });
 
     it('SW_1 has 0 events', () => {
-      assert.equal(r.getObjectOnClu('MyCLU', 'SW_1')?.events.length, 0);
+      assert.equal(registry.getObjectOnClu('MyCLU', 'SW_1')?.events.length, 0);
     });
   });
 
   describe('parseXml - properties', () => {
-    let r;
-    before(() => { r = ProjectRegistry.parseXml(SYSTEM_XML, PROPERTIES_XML); });
+    let registry;
+    before(() => { registry = ProjectRegistry.parseXml(SYSTEM_XML, PROPERTIES_XML); });
 
     it('projectKey is Buffer', () => {
-      assert.ok(r.properties.projectKey instanceof Buffer);
-      assert.ok(r.properties.projectKey.length > 0);
+      assert.ok(registry.properties.projectKey instanceof Buffer);
+      assert.ok(registry.properties.projectKey.length > 0);
     });
 
     it('projectIV is Buffer', () => {
-      assert.ok(r.properties.projectIV instanceof Buffer);
-      assert.ok(r.properties.projectIV.length > 0);
+      assert.ok(registry.properties.projectIV instanceof Buffer);
+      assert.ok(registry.properties.projectIV.length > 0);
     });
 
     it('encryptedClus: 192.168.1.10 = true', () => {
-      assert.equal(r.properties.encryptedClus.get('192.168.1.10'), true);
+      assert.equal(registry.properties.encryptedClus.get('192.168.1.10'), true);
     });
 
     it('encryptedClus: 192.168.1.20 = false', () => {
-      assert.equal(r.properties.encryptedClus.get('192.168.1.20'), false);
+      assert.equal(registry.properties.encryptedClus.get('192.168.1.20'), false);
     });
 
     it('encryptedClus size is 2', () => {
-      assert.equal(r.properties.encryptedClus.size, 2);
+      assert.equal(registry.properties.encryptedClus.size, 2);
     });
   });
 
   describe('parseXml - empty properties', () => {
     it('projectKey is undefined when no keyBytes', () => {
-      const r = ProjectRegistry.parseXml(SYSTEM_XML, '');
-      assert.equal(r.properties.projectKey, undefined);
+      const registry = ProjectRegistry.parseXml(SYSTEM_XML, '');
+      assert.equal(registry.properties.projectKey, undefined);
     });
 
     it('projectIV is undefined when no ivBytes', () => {
-      const r = ProjectRegistry.parseXml(SYSTEM_XML, '');
-      assert.equal(r.properties.projectIV, undefined);
+      const registry = ProjectRegistry.parseXml(SYSTEM_XML, '');
+      assert.equal(registry.properties.projectIV, undefined);
     });
 
     it('encryptedClus is empty Map', () => {
-      const r = ProjectRegistry.parseXml(SYSTEM_XML, '');
-      assert.equal(r.properties.encryptedClus.size, 0);
+      const registry = ProjectRegistry.parseXml(SYSTEM_XML, '');
+      assert.equal(registry.properties.encryptedClus.size, 0);
     });
   });
 
   describe('XStream reference resolution', () => {
     it('resolves features via reference= attribute', () => {
-      const r = ProjectRegistry.parseXml(SYSTEM_XML_WITH_REF, '');
-      const obj = r.getObjectOnClu('RefCLU', 'DEV1');
+      const registry = ProjectRegistry.parseXml(SYSTEM_XML_WITH_REF, '');
+      const obj = registry.getObjectOnClu('RefCLU', 'DEV1');
       assert.ok(obj !== null, 'DEV1 should be found');
-      const f = obj?.features.find((x) => x.name === 'FOO');
-      assert.ok(f !== undefined, 'FOO feature should be resolved via reference');
-      assert.equal(f.index, 5);
-      assert.equal(f.type, 'STRING');
-      assert.equal(f.accessGet, true);
-      assert.equal(f.accessSet, true);
+      const feature = obj?.features.find((candidate) => candidate.name === 'FOO');
+      assert.ok(feature !== undefined, 'FOO feature should be resolved via reference');
+      assert.equal(feature.index, 5);
+      assert.equal(feature.type, 'STRING');
+      assert.equal(feature.accessGet, true);
+      assert.equal(feature.accessSet, true);
     });
   });
 
@@ -352,22 +352,22 @@ describe('ProjectRegistry', () => {
     });
 
     it('loads system.xml from disk', () => {
-      const r = ProjectRegistry.loadFromFile(join(tmpDir, 'system.xml'));
-      assert.ok(!r.isEmpty());
-      assert.ok(r.getClu('MyCLU') !== null);
+      const registry = ProjectRegistry.loadFromFile(join(tmpDir, 'system.xml'));
+      assert.ok(!registry.isEmpty());
+      assert.ok(registry.getClu('MyCLU') !== null);
     });
 
     it('loads properties.xml from disk when path given', () => {
-      const r = ProjectRegistry.loadFromFile(
+      const registry = ProjectRegistry.loadFromFile(
         join(tmpDir, 'system.xml'),
         join(tmpDir, 'properties.xml'),
       );
-      assert.ok(r.properties.projectKey instanceof Buffer);
+      assert.ok(registry.properties.projectKey instanceof Buffer);
     });
 
     it('missing properties.xml path → no error, no key', () => {
-      const r = ProjectRegistry.loadFromFile(join(tmpDir, 'system.xml'));
-      assert.equal(r.properties.projectKey, undefined);
+      const registry = ProjectRegistry.loadFromFile(join(tmpDir, 'system.xml'));
+      assert.equal(registry.properties.projectKey, undefined);
     });
   });
 });

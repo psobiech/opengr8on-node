@@ -9,33 +9,33 @@ export interface LocalInterface {
   mac: string;
 }
 
+export function getInterfaceByName(name: string): LocalInterface | null {
+  return getLocalIPv4Interfaces().find(localInterface => localInterface.name === name) ?? null;
+}
+
+export function getInterfaceByAddress(address: string): LocalInterface | null {
+  return getLocalIPv4Interfaces().find(localInterface => localInterface.address === address) ?? null;
+}
+
 export function getLocalIPv4Interfaces(): LocalInterface[] {
   const interfaces = os.networkInterfaces();
   const result: LocalInterface[] = [];
 
-  for (const [name, addrs] of Object.entries(interfaces)) {
-    if (!addrs) continue;
-    for (const addr of addrs) {
-      if (addr.family !== 'IPv4' || addr.internal) continue;
-      const mac = addr.mac?.toLowerCase();
-      if (mac && VMWARE_MAC_PREFIXES.some(p => mac.startsWith(p))) continue;
-      result.push({ name, address: addr.address, netmask: addr.netmask, mac: addr.mac });
+  for (const [name, addresses] of Object.entries(interfaces)) {
+    if (!addresses) continue;
+    for (const addressInfo of addresses) {
+      if (addressInfo.family !== 'IPv4' || addressInfo.internal) continue;
+      const mac = addressInfo.mac?.toLowerCase();
+      if (mac && VMWARE_MAC_PREFIXES.some(prefix => mac.startsWith(prefix))) continue;
+      result.push({ name, address: addressInfo.address, netmask: addressInfo.netmask, mac: addressInfo.mac });
     }
   }
 
   return result;
 }
 
-export function getInterfaceByName(name: string): LocalInterface | null {
-  return getLocalIPv4Interfaces().find(i => i.name === name) ?? null;
-}
-
-export function getInterfaceByAddress(address: string): LocalInterface | null {
-  return getLocalIPv4Interfaces().find(i => i.address === address) ?? null;
-}
-
 export function broadcastAddress(address: string, netmask: string): string {
   const addrParts = address.split('.').map(Number);
   const maskParts = netmask.split('.').map(Number);
-  return addrParts.map((b, i) => (b & maskParts[i]) | (~maskParts[i] & 0xFF)).join('.');
+  return addrParts.map((octet, i) => (octet & maskParts[i]) | (~maskParts[i] & 0xFF)).join('.');
 }

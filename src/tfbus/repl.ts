@@ -47,24 +47,24 @@ type FrameFn = (addr: number, chanIdx: number, params: number[]) => Buffer;
 // DIMM indices from DIMMER_MOSFET_DIN XML: 0=HoldValue, 1=Switch, 2=SwitchOn, 3=SwitchOff
 const EXEC_WIRE: Record<number, Record<number, FrameFn>> = {
   [CLASS_DIMM]: {
-    0: (addr, _, p) => moduleCmdFrame(addr, p[0] ? [setRampTimeRecord(p[0]), activateRecord(0x80)] : [activateRecord(0x80)]),
-    1: (addr, _, p) => moduleCmdFrame(addr, p[1] ? [setRampTimeRecord(p[1]), activateRecord(0x80)] : [activateRecord(0x80)]),
-    2: (addr, _, p) => moduleCmdFrame(addr, p[1] ? [setRampTimeRecord(p[1]), activateRecord(0x80)] : [activateRecord(0x80)]),
-    3: (addr, _, p) => moduleCmdFrame(addr, p[1] ? [setRampTimeRecord(p[1]), deactivateRecord(0x01)] : [deactivateRecord(0x01)]),
+    0: (addr, _channelIndex, params) => moduleCmdFrame(addr, params[0] ? [setRampTimeRecord(params[0]), activateRecord(0x80)] : [activateRecord(0x80)]),
+    1: (addr, _channelIndex, params) => moduleCmdFrame(addr, params[1] ? [setRampTimeRecord(params[1]), activateRecord(0x80)] : [activateRecord(0x80)]),
+    2: (addr, _channelIndex, params) => moduleCmdFrame(addr, params[1] ? [setRampTimeRecord(params[1]), activateRecord(0x80)] : [activateRecord(0x80)]),
+    3: (addr, _channelIndex, params) => moduleCmdFrame(addr, params[1] ? [setRampTimeRecord(params[1]), deactivateRecord(0x01)] : [deactivateRecord(0x01)]),
   },
   [CLASS_DOUT]: {
-    0: (addr, ch, _) => moduleCmdFrame(addr, [setOutputRecord((1 << ch) & 0xFF, 1)]),
-    1: (addr, ch, _) => moduleCmdFrame(addr, [setOutputRecord((1 << ch) & 0xFF, 1)]),
-    2: (addr, ch, _) => moduleCmdFrame(addr, [setOutputRecord((1 << ch) & 0xFF, 0)]),
+    0: (addr, channelIndex, _params) => moduleCmdFrame(addr, [setOutputRecord((1 << channelIndex) & 0xFF, 1)]),
+    1: (addr, channelIndex, _params) => moduleCmdFrame(addr, [setOutputRecord((1 << channelIndex) & 0xFF, 1)]),
+    2: (addr, channelIndex, _params) => moduleCmdFrame(addr, [setOutputRecord((1 << channelIndex) & 0xFF, 0)]),
   },
   [CLASS_ROLLER_SHUTTER]: {
-    0: (addr, ch, _) => moduleCmdFrame(addr, [setPositionRecord(0, ch, 100)]),
-    1: (addr, ch, _) => moduleCmdFrame(addr, [setPositionRecord(0, ch, 0)]),
-    2: (addr, _, __) => moduleCmdFrame(addr, [activateRecord(0x80)]),
-    3: (addr, _, __) => moduleCmdFrame(addr, [deactivateRecord(0x01)]),
-    4: (addr, _, __) => moduleCmdFrame(addr, [activateRecord(0x80)]),
-    5: (addr, ch, _) => moduleCmdFrame(addr, [setPositionRecord(0, ch, 100)]),
-    6: (addr, ch, _) => moduleCmdFrame(addr, [setPositionRecord(0, ch, 0)]),
+    0: (addr, channelIndex, _params) => moduleCmdFrame(addr, [setPositionRecord(0, channelIndex, 100)]),
+    1: (addr, channelIndex, _params) => moduleCmdFrame(addr, [setPositionRecord(0, channelIndex, 0)]),
+    2: (addr, _channelIndex, _params) => moduleCmdFrame(addr, [activateRecord(0x80)]),
+    3: (addr, _channelIndex, _params) => moduleCmdFrame(addr, [deactivateRecord(0x01)]),
+    4: (addr, _channelIndex, _params) => moduleCmdFrame(addr, [activateRecord(0x80)]),
+    5: (addr, channelIndex, _params) => moduleCmdFrame(addr, [setPositionRecord(0, channelIndex, 100)]),
+    6: (addr, channelIndex, _params) => moduleCmdFrame(addr, [setPositionRecord(0, channelIndex, 0)]),
   },
 };
 
@@ -85,14 +85,14 @@ const GET_WIRE: Record<number, Record<number, number>> = {
 // DIMM: 0=Value(dimmerSetValue), 1=RampTime(setRampTime)
 const SET_WIRE: Record<number, Record<number, FrameFn>> = {
   [CLASS_DIMM]: {
-    0: (addr, _, p) => moduleCmdFrame(addr, [dimmerSetValueRecord(p[0])]),
-    1: (addr, _, p) => moduleCmdFrame(addr, [setRampTimeRecord(p[0])]),
+    0: (addr, _channelIndex, params) => moduleCmdFrame(addr, [dimmerSetValueRecord(params[0])]),
+    1: (addr, _channelIndex, params) => moduleCmdFrame(addr, [setRampTimeRecord(params[0])]),
   },
   [CLASS_DOUT]: {
-    0: (addr, ch, p) => moduleCmdFrame(addr, [setOutputRecord((1 << ch) & 0xFF, p[0])]),
+    0: (addr, channelIndex, params) => moduleCmdFrame(addr, [setOutputRecord((1 << channelIndex) & 0xFF, params[0])]),
   },
   [CLASS_ROLLER_SHUTTER]: {
-    0: (addr, ch, p) => moduleCmdFrame(addr, [setPositionRecord(0, ch, p[0])]),
+    0: (addr, channelIndex, params) => moduleCmdFrame(addr, [setPositionRecord(0, channelIndex, params[0])]),
   },
 };
 
@@ -100,56 +100,9 @@ const SET_WIRE: Record<number, Record<number, FrameFn>> = {
 
 interface Target {
   addr: number;
-  io: TFBusIOInfo | null;
+  ioInfo: TFBusIOInfo | null;
   entry: ModuleEntry | null;
   label: string;
-}
-
-// ─── TLV decoding (shared with monitor) ──────────────────────────────────────
-
-function decodeValue(type: number, data: Buffer): string {
-  switch (type) {
-    case TLVType.TEMPERATURE:
-      return data.length >= 2 ? `${(data.readUInt16LE(0) / 100).toFixed(2)}°C` : data.toString('hex');
-    case TLVType.LIGHT:
-      return data.length >= 2 ? `${(data.readUInt16LE(0) / 100).toFixed(2)}%` : data.toString('hex');
-    case TLVType.ROLLER_POSITION:
-      return data.length >= 3
-        ? `ch${data[0]} ${data[1]}%${data[2] !== 0 ? ' moving' : ' stopped'}`
-        : data.toString('hex');
-    case TLVType.INPUT_BITMASK:
-      return `0b${data[0].toString(2).padStart(8, '0')}`;
-    case TLVType.STATE:
-      if (data.length >= 2) return `${(data.readUInt16LE(0) / 10).toFixed(1)}%`;
-      return data[0] === 0 ? 'idle' : 'active';
-    case TLVType.DIGITAL_STATE:
-      return data[0] === 0 ? 'idle' : 'active';
-    case TLVType.POLL_COUNTER:
-      return String(data[0]);
-    default:
-      return data.toString('hex');
-  }
-}
-
-const TLV_NAMES: Record<number, string> = Object.fromEntries(
-  Object.entries(TLVType).map(([k, v]) => [v as number, k]),
-);
-
-function decodeTlvRecord(rec: { type: number; meta: number; data: Buffer }): string {
-  const typeName = TLV_NAMES[rec.type] ?? `0x${rec.type.toString(16).padStart(2, '0')}`;
-  return `${typeName}: ${decodeValue(rec.type, rec.data)}`;
-}
-
-// ─── Transcript lookup ────────────────────────────────────────────────────────
-
-function findByFields(transcript: ModuleTranscript, hwType: number, fwVer: number): ModuleEntry | null {
-  const byFwType = (transcript as Record<number, Record<number, Record<number, ModuleEntry>>>)[hwType];
-  if (!byFwType) return null;
-  for (const byFwApiVer of Object.values(byFwType)) {
-    const e = byFwApiVer[fwVer];
-    if (e) return e;
-  }
-  return Object.values(Object.values(byFwType)[0] ?? {})[0] ?? null;
 }
 
 // ─── REPL ─────────────────────────────────────────────────────────────────────
@@ -165,27 +118,352 @@ export async function runRepl(transport: TFBusTransport, options: ReplOptions = 
   } = options;
 
   const { output: transcript, errors } = transcribeModules(dir, { lang } satisfies TranscribeOptions);
-  for (const e of errors) process.stderr.write(`warn: ${e}\n`);
+  for (const error of errors) process.stderr.write(`warn: ${error}\n`);
 
-  // name (lower) → { module, io }
-  const nameIndex = new Map<string, { module: TFBusModuleInfo; io: TFBusIOInfo }>();
+  // name (lower) → { module, ioInfo }
+  const nameIndex = new Map<string, { module: TFBusModuleInfo; ioInfo: TFBusIOInfo }>();
   const addrIndex = new Map<number, { module: TFBusModuleInfo; entry: ModuleEntry | null }>();
   let ompModules: TFBusModuleInfo[] = [];
 
   if (ompPath) {
     try {
       ompModules = readTFBusModules(ompPath);
-      if (cluSerial) ompModules = ompModules.filter(m => m.cluSerial === cluSerial);
-      for (const m of ompModules) {
-        const entry = findByFields(transcript, m.hwType, m.fwVer);
-        addrIndex.set(m.addr, { module: m, entry });
-        for (const io of m.ios) {
-          nameIndex.set(io.name.toLowerCase(), { module: m, io });
+      if (cluSerial) ompModules = ompModules.filter(ompModule => ompModule.cluSerial === cluSerial);
+      for (const ompModule of ompModules) {
+        const entry = findByFields(transcript, ompModule.hwType, ompModule.fwVer);
+        addrIndex.set(ompModule.addr, { module: ompModule, entry });
+        for (const ioInfo of ompModule.ios) {
+          nameIndex.set(ioInfo.name.toLowerCase(), { module: ompModule, ioInfo });
         }
       }
       process.stdout.write(`Loaded ${ompModules.length} module(s) from OMP.\n`);
-    } catch (e) {
-      process.stderr.write(`warn: OMP load failed: ${(e as Error).message}\n`);
+    } catch (error) {
+      process.stderr.write(`warn: OMP load failed: ${(error as Error).message}\n`);
+    }
+  }
+
+  const SERIAL_CMDS = new Set(['get', 'status', 'version', 'set', 'execute', 'exec', 'on', 'off', 'listen', 'busload']);
+  const COMMANDS = ['list', 'ls', 'get', 'info', 'status', 'version', 'set', 'execute', 'exec', 'listen', 'busload', 'on', 'off', 'help', 'exit', 'quit'];
+  const TARGET_CMDS = new Set(['get', 'info', 'status', 'version', 'set', 'execute', 'exec', 'listen', 'on', 'off']);
+
+  printHelp();
+
+  const readline = createInterface({ input: process.stdin, output: process.stdout, terminal: true, completer });
+
+  prompt();
+  await new Promise<void>((resolve) => readline.on('close', resolve));
+
+  function prompt() {
+    readline.question('tfbus> ', async (line) => {
+      const parts = line.trim().split(/\s+/);
+      const command = parts[0]?.toLowerCase() ?? '';
+      if (command === 'exit' || command === 'quit') {
+        readline.close();
+        return;
+      }
+      try {
+        await dispatch(command, parts.slice(1));
+      } catch (error) {
+        process.stdout.write(`error: ${(error as Error).message}\n`);
+      }
+      prompt();
+    });
+  }
+
+  async function dispatch(command: string, args: string[]) {
+    const needsSerial = SERIAL_CMDS.has(command);
+    if (needsSerial) await transport.open();
+    try {
+    switch (command) {
+      case 'list':
+      case 'ls': {
+        if (ompModules.length === 0) { process.stdout.write('No modules loaded (provide --omp).\n'); return; }
+        for (const ompModule of ompModules) {
+          const entry = addrIndex.get(ompModule.addr)?.entry ?? null;
+          const type = entry?.name ?? `hwType=0x${ompModule.hwType.toString(16)}`;
+          const names = ompModule.ioNames.slice(0, 3).join(', ') + (ompModule.ioNames.length > 3 ? ` +${ompModule.ioNames.length - 3}` : '');
+          process.stdout.write(`  addr=${String(ompModule.addr).padStart(2, '0')}  ${type.padEnd(24)}  serial=${ompModule.serialHex}  [${names}]\n`);
+        }
+        break;
+      }
+
+      case 'info': {
+        const target = resolveTarget(args[0]);
+        if (!target) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
+        const hit = addrIndex.get(target.addr);
+        process.stdout.write(`addr=${target.addr}  label=${target.label}\n`);
+        if (hit) {
+          const ompModule = hit.module;
+          process.stdout.write(`  serial=${ompModule.serialHex}  hwType=0x${ompModule.hwType.toString(16)}  fwType=${ompModule.fwType}  fwVer=${ompModule.fwVer}\n`);
+          for (const ioInfo of ompModule.ios) {
+            process.stdout.write(`  io: ${ioInfo.name.padEnd(36)}  class=${ioInfo.ioClass}  chan=${ioInfo.chanIdx}\n`);
+          }
+        }
+        if (target.entry) {
+          process.stdout.write(`  type: ${target.entry.name}\n`);
+          for (const obj of Object.values(target.entry.objects)) {
+            process.stdout.write(`  [${obj.name}]\n`);
+            const featureList = Object.values(obj.features).map(feature => `${feature.name}(${feature.index})`).join('  ');
+            const methodList = Object.values(obj.methods).map(method => `${method.name}(${method.index})`).join('  ');
+            if (featureList) process.stdout.write(`    features: ${featureList}\n`);
+            if (methodList) process.stdout.write(`    methods:  ${methodList}\n`);
+          }
+        }
+        break;
+      }
+
+      case 'get': {
+        const target = resolveTarget(args[0]);
+        if (!target) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
+        transport.enqueue(statusPollFrame(target.addr));
+        const rawFrame = await rxAfterTx(target.addr, 0x04);
+        if (!rawFrame) { process.stdout.write('No response.\n'); return; }
+        const frame = parseRxFrame(rawFrame);
+        if (!frame) { process.stdout.write(`Bad frame: ${rawFrame.toString('hex')}\n`); return; }
+        const { records, raw } = parseStatusPoll(frame.payload);
+        if (records === null) { process.stdout.write(`raw: ${raw.toString('hex')}\n`); return; }
+        if (records.length === 0) { process.stdout.write('Empty response.\n'); return; }
+        const featureName = args[1];
+        if (!featureName) {
+          for (const record of records) process.stdout.write(`  ${decodeTlvRecord(record)}\n`);
+          break;
+        }
+        const ioClass = target.ioInfo?.ioClass ?? CLASS_DIMM;
+        const obj = target.entry?.objects[ioClass];
+        const feature = obj ? Object.values(obj.features).find(candidate => candidate.name.toLowerCase() === featureName.toLowerCase()) : null;
+        if (!feature) {
+          const available = obj ? Object.values(obj.features).filter(candidate => candidate.get).map(candidate => candidate.name).join(', ') : '(no transcript)';
+          process.stdout.write(`Unknown feature: ${featureName}. Readable: ${available}\n`);
+          return;
+        }
+        if (!feature.get) { process.stdout.write(`Feature ${feature.name} is write-only.\n`); return; }
+        const tlvType = GET_WIRE[ioClass]?.[feature.index];
+        if (tlvType === undefined) {
+          process.stdout.write(`No TLV mapping for ${feature.name} (class=${ioClass} idx=${feature.index}). All records:\n`);
+          for (const record of records) process.stdout.write(`  ${decodeTlvRecord(record)}\n`);
+          break;
+        }
+        const match = records.find(record => record.type === tlvType);
+        if (!match) { process.stdout.write(`  ${feature.name}: (not present in response)\n`); break; }
+        process.stdout.write(`  ${feature.name}: ${decodeValue(match.type, match.data)}\n`);
+        break;
+      }
+
+      case 'status': {
+        const target = resolveTarget(args[0]);
+        if (!target) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
+        transport.enqueue(statusPollFrame(target.addr));
+        const rawFrame = await rxAfterTx(target.addr, 0x04);
+        if (!rawFrame) { process.stdout.write('No response.\n'); return; }
+        const frame = parseRxFrame(rawFrame);
+        if (!frame) { process.stdout.write(`Bad frame: ${rawFrame.toString('hex')}\n`); return; }
+        const { records, raw } = parseStatusPoll(frame.payload);
+        if (records === null) { process.stdout.write(`raw: ${raw.toString('hex')}\n`); return; }
+        if (records.length === 0) { process.stdout.write('Empty response.\n'); return; }
+        for (const record of records) {
+          process.stdout.write(`  ${decodeTlvRecord(record)}\n`);
+        }
+        break;
+      }
+
+      case 'version': {
+        const target = resolveTarget(args[0]);
+        if (!target) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
+        transport.enqueue(versionQueryFrame(target.addr));
+        const rawFrame = await rxAfterTx(target.addr, 0xF9);
+        if (!rawFrame) { process.stdout.write('No response.\n'); return; }
+        const frame = parseRxFrame(rawFrame);
+        if (!frame || frame.payload.length === 0) { process.stdout.write('No version data.\n'); return; }
+        const version = parseVersionResponse(frame.payload);
+        process.stdout.write(`  raw: ${frame.payload.toString('hex')}\n`);
+        if (version) process.stdout.write(`  ${JSON.stringify(version)}\n`);
+        break;
+      }
+
+      case 'set': {
+        const target = resolveTarget(args[0]);
+        if (!target) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
+        const featureName = args[1];
+        const rawValue = args[2];
+        if (!featureName || rawValue === undefined) { process.stdout.write('Usage: set <name|addr> <Feature> <value>\n'); return; }
+        const value = Number(rawValue);
+        if (isNaN(value)) { process.stdout.write(`Invalid value: ${rawValue}\n`); return; }
+        const ioClass = target.ioInfo?.ioClass ?? CLASS_DIMM;
+        const chanIdx = target.ioInfo?.chanIdx ?? 0;
+        const obj = target.entry?.objects[ioClass];
+        const feature = obj ? Object.values(obj.features).find(candidate => candidate.name.toLowerCase() === featureName.toLowerCase()) : null;
+        if (!feature) {
+          const available = obj ? Object.values(obj.features).filter(candidate => candidate.set).map(candidate => candidate.name).join(', ') : '(no transcript)';
+          process.stdout.write(`Unknown feature: ${featureName}. Settable: ${available}\n`);
+          return;
+        }
+        if (!feature.set) { process.stdout.write(`Feature ${feature.name} is read-only.\n`); return; }
+        const frameBuilder = SET_WIRE[ioClass]?.[feature.index];
+        if (!frameBuilder) {
+          process.stdout.write(`No wire encoding for ${feature.name} (class=${ioClass} idx=${feature.index}).\n`);
+          return;
+        }
+        transport.enqueue(frameBuilder(target.addr, chanIdx, [value]));
+        process.stdout.write(`set ${feature.name}=${value} → addr=${target.addr} [${target.label}]\n`);
+        await showResponse(target.addr, 0xF0);
+        break;
+      }
+
+      case 'execute':
+      case 'exec': {
+        const target = resolveTarget(args[0]);
+        if (!target) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
+        const methodName = args[1];
+        if (!methodName) { process.stdout.write('Usage: execute <name|addr> <Method> [param…]\n'); return; }
+        const params = args.slice(2).map(Number);
+        const ioClass = target.ioInfo?.ioClass ?? CLASS_DIMM;
+        const chanIdx = target.ioInfo?.chanIdx ?? 0;
+        const obj = target.entry?.objects[ioClass];
+        const method = obj ? Object.values(obj.methods).find(candidate => candidate.name.toLowerCase() === methodName.toLowerCase()) : null;
+        if (!method) {
+          const available = obj ? Object.values(obj.methods).map(candidate => `${candidate.name}(${candidate.params.map(param => param.name).join(',')})`).join(', ') : '(no transcript)';
+          process.stdout.write(`Unknown method: ${methodName}. Available: ${available}\n`);
+          return;
+        }
+        const wire = method.call === 'set' ? SET_WIRE : EXEC_WIRE;
+        const frameBuilder = wire[ioClass]?.[method.index];
+        if (!frameBuilder) {
+          process.stdout.write(`No wire encoding for ${method.name} (class=${ioClass} idx=${method.index} call=${method.call}).\n`);
+          return;
+        }
+        transport.enqueue(frameBuilder(target.addr, chanIdx, params));
+        const paramStr = method.params.map((param, i) => `${param.name}=${params[i] ?? '?'}`).join(', ');
+        process.stdout.write(`execute ${method.name}(${paramStr}) → addr=${target.addr} [${target.label}]\n`);
+        await showResponse(target.addr, 0xF0);
+        break;
+      }
+
+      case 'listen': {
+        const firstIsSeconds = args[0] !== undefined && /^\d+$/.test(args[0]);
+        if (!args[0] || firstIsSeconds) {
+          const seconds = firstIsSeconds ? Math.max(1, parseInt(args[0], 10)) : 5;
+          const globalLabel = (addr: number) => {
+            const hit = addrIndex.get(addr);
+            return hit ? (hit.module.ioNames[0] ?? hit.entry?.name ?? `addr=${addr}`) : `addr=${addr}`;
+          };
+          await listenModule(transport, null, globalLabel, seconds);
+        } else {
+          const target = resolveTarget(args[0]);
+          if (!target) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
+          const seconds = Math.max(1, parseInt(args[1] ?? '5', 10));
+          await listenModule(transport, target.addr, () => target.label, seconds);
+        }
+        break;
+      }
+
+      case 'busload': {
+        const seconds = Math.max(1, parseInt(args[0] ?? '10', 10));
+        await measureBusLoad(transport, seconds, baud);
+        break;
+      }
+
+      case 'on': {
+        const target = resolveTarget(args[0]);
+        if (!target) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
+        transport.enqueue(buildOnOff(target, true));
+        process.stdout.write(`sent ON → addr=${target.addr} [${target.label}]\n`);
+        await showResponse(target.addr, 0xF0);
+        break;
+      }
+
+      case 'off': {
+        const target = resolveTarget(args[0]);
+        if (!target) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
+        transport.enqueue(buildOnOff(target, false));
+        process.stdout.write(`sent OFF → addr=${target.addr} [${target.label}]\n`);
+        await showResponse(target.addr, 0xF0);
+        break;
+      }
+
+      case 'help':
+        printHelp();
+        break;
+
+      case '':
+        break;
+
+      default:
+        process.stdout.write(`Unknown command: ${command}. Type 'help' for usage.\n`);
+    }
+    } finally {
+      if (needsSerial) await transport.close();
+    }
+  }
+
+  function completer(line: string): [string[], string] {
+    const parts = line.split(/\s+/);
+
+    if (parts.length <= 1) {
+      const prefix = parts[0] ?? '';
+      const hits = COMMANDS.filter(command => command.startsWith(prefix));
+      return [hits.length ? hits : COMMANDS, prefix];
+    }
+
+    const command = parts[0].toLowerCase();
+    const argIdx = parts.length - 1;
+    const current = parts[argIdx] ?? '';
+
+    if (argIdx === 1 && TARGET_CMDS.has(command)) {
+      const names = [...nameIndex.values()].map(indexEntry => indexEntry.ioInfo.name);
+      const hits = names.filter(name => name.toLowerCase().startsWith(current.toLowerCase()));
+      return [hits.length ? hits : names, current];
+    }
+
+    if (argIdx === 2 && (command === 'get' || command === 'set' || command === 'execute' || command === 'exec')) {
+      const target = resolveTarget(parts[1]);
+      if (target?.entry) {
+        const ioClass = target.ioInfo?.ioClass ?? CLASS_DIMM;
+        const obj = target.entry.objects[ioClass];
+        if (obj) {
+          const candidates = command === 'get'
+            ? Object.values(obj.features).filter(feature => feature.get).map(feature => feature.name)
+            : command === 'set'
+              ? Object.values(obj.features).filter(feature => feature.set).map(feature => feature.name)
+              : Object.values(obj.methods).map(method => method.name);
+          const hits = candidates.filter(name => name.toLowerCase().startsWith(current.toLowerCase()));
+          return [hits.length ? hits : candidates, current];
+        }
+      }
+    }
+
+    return [[], current];
+  }
+
+  function resolveTarget(arg: string): Target | null {
+    if (!arg) return null;
+    // numeric addr
+    const numericAddr = arg.startsWith('0x') || arg.startsWith('0X')
+      ? parseInt(arg.slice(2), 16)
+      : /^\d+$/.test(arg) ? parseInt(arg, 10) : NaN;
+    if (!isNaN(numericAddr)) {
+      const hit = addrIndex.get(numericAddr);
+      return { addr: numericAddr, ioInfo: null, entry: hit?.entry ?? null, label: `addr=${numericAddr}` };
+    }
+    // name lookup
+    const hit = nameIndex.get(arg.toLowerCase());
+    if (hit) {
+      const { module: ompModule, ioInfo } = hit;
+      return { addr: ompModule.addr, ioInfo, entry: addrIndex.get(ompModule.addr)?.entry ?? null, label: ioInfo.name };
+    }
+    return null;
+  }
+
+  async function showResponse(addr: number, txType: number): Promise<void> {
+    const rawFrame = await rxAfterTx(addr, txType);
+    if (!rawFrame) { process.stdout.write('  (no response)\n'); return; }
+    const frame = parseRxFrame(rawFrame);
+    if (!frame) { process.stdout.write(`  raw: ${rawFrame.toString('hex')}\n`); return; }
+    if (frame.payload.length === 0) { process.stdout.write('  (ack)\n'); return; }
+    const { records, raw } = parseStatusPoll(frame.payload);
+    if (records === null) {
+      process.stdout.write(`  raw: ${raw.toString('hex')}\n`);
+    } else {
+      for (const record of records) process.stdout.write(`  ${decodeTlvRecord(record)}\n`);
     }
   }
 
@@ -197,50 +475,17 @@ export async function runRepl(transport: TFBusTransport, options: ReplOptions = 
     let synced = false;
 
     while (Date.now() < deadline) {
-      const buf = await transport.dequeue();
-      if (buf === null || buf.length < 3 || buf[0] !== 0xAA) continue;
+      const rawFrame = await transport.dequeue();
+      if (rawFrame === null || rawFrame.length < 3 || rawFrame[0] !== 0xAA) continue;
 
       if (!synced) {
         // Wait for our TX echo (dest=addr, type=txType)
-        if (buf[1] === addr && buf[2] === txType) synced = true;
+        if (rawFrame[1] === addr && rawFrame[2] === txType) synced = true;
         continue;
       }
 
       // After echo: first frame addressed to CLU (0x00) is the module's response
-      if (buf[1] === 0x00) return buf;
-    }
-    return null;
-  }
-
-  async function showResponse(addr: number, txType: number): Promise<void> {
-    const buf = await rxAfterTx(addr, txType);
-    if (!buf) { process.stdout.write('  (no response)\n'); return; }
-    const frame = parseRxFrame(buf);
-    if (!frame) { process.stdout.write(`  raw: ${buf.toString('hex')}\n`); return; }
-    if (frame.payload.length === 0) { process.stdout.write('  (ack)\n'); return; }
-    const { records, raw } = parseStatusPoll(frame.payload);
-    if (records === null) {
-      process.stdout.write(`  raw: ${raw.toString('hex')}\n`);
-    } else {
-      for (const r of records) process.stdout.write(`  ${decodeTlvRecord(r)}\n`);
-    }
-  }
-
-  function resolveTarget(arg: string): Target | null {
-    if (!arg) return null;
-    // numeric addr
-    const n = arg.startsWith('0x') || arg.startsWith('0X')
-      ? parseInt(arg.slice(2), 16)
-      : /^\d+$/.test(arg) ? parseInt(arg, 10) : NaN;
-    if (!isNaN(n)) {
-      const hit = addrIndex.get(n);
-      return { addr: n, io: null, entry: hit?.entry ?? null, label: `addr=${n}` };
-    }
-    // name lookup
-    const hit = nameIndex.get(arg.toLowerCase());
-    if (hit) {
-      const { module: m, io } = hit;
-      return { addr: m.addr, io, entry: addrIndex.get(m.addr)?.entry ?? null, label: io.name };
+      if (rawFrame[1] === 0x00) return rawFrame;
     }
     return null;
   }
@@ -265,372 +510,90 @@ export async function runRepl(transport: TFBusTransport, options: ReplOptions = 
       '',
     ].join('\n'));
   }
+}
 
-  const SERIAL_CMDS = new Set(['get', 'status', 'version', 'set', 'execute', 'exec', 'on', 'off', 'listen', 'busload']);
+// ─── Transcript lookup ────────────────────────────────────────────────────────
 
-  async function dispatch(cmd: string, args: string[]) {
-    const needsSerial = SERIAL_CMDS.has(cmd);
-    if (needsSerial) await transport.open();
-    try {
-    switch (cmd) {
-      case 'list':
-      case 'ls': {
-        if (ompModules.length === 0) { process.stdout.write('No modules loaded (provide --omp).\n'); return; }
-        for (const m of ompModules) {
-          const entry = addrIndex.get(m.addr)?.entry ?? null;
-          const type = entry?.name ?? `hwType=0x${m.hwType.toString(16)}`;
-          const names = m.ioNames.slice(0, 3).join(', ') + (m.ioNames.length > 3 ? ` +${m.ioNames.length - 3}` : '');
-          process.stdout.write(`  addr=${String(m.addr).padStart(2, '0')}  ${type.padEnd(24)}  serial=${m.serialHex}  [${names}]\n`);
-        }
-        break;
-      }
-
-      case 'info': {
-        const t = resolveTarget(args[0]);
-        if (!t) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
-        const hit = addrIndex.get(t.addr);
-        process.stdout.write(`addr=${t.addr}  label=${t.label}\n`);
-        if (hit) {
-          const m = hit.module;
-          process.stdout.write(`  serial=${m.serialHex}  hwType=0x${m.hwType.toString(16)}  fwType=${m.fwType}  fwVer=${m.fwVer}\n`);
-          for (const io of m.ios) {
-            process.stdout.write(`  io: ${io.name.padEnd(36)}  class=${io.ioClass}  chan=${io.chanIdx}\n`);
-          }
-        }
-        if (t.entry) {
-          process.stdout.write(`  type: ${t.entry.name}\n`);
-          for (const obj of Object.values(t.entry.objects)) {
-            process.stdout.write(`  [${obj.name}]\n`);
-            const feats = Object.values(obj.features).map(f => `${f.name}(${f.index})`).join('  ');
-            const meths = Object.values(obj.methods).map(m => `${m.name}(${m.index})`).join('  ');
-            if (feats) process.stdout.write(`    features: ${feats}\n`);
-            if (meths) process.stdout.write(`    methods:  ${meths}\n`);
-          }
-        }
-        break;
-      }
-
-      case 'get': {
-        const t = resolveTarget(args[0]);
-        if (!t) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
-        transport.enqueue(statusPollFrame(t.addr));
-        const buf = await rxAfterTx(t.addr, 0x04);
-        if (!buf) { process.stdout.write('No response.\n'); return; }
-        const frame = parseRxFrame(buf);
-        if (!frame) { process.stdout.write(`Bad frame: ${buf.toString('hex')}\n`); return; }
-        const { records, raw } = parseStatusPoll(frame.payload);
-        if (records === null) { process.stdout.write(`raw: ${raw.toString('hex')}\n`); return; }
-        if (records.length === 0) { process.stdout.write('Empty response.\n'); return; }
-        const featureName = args[1];
-        if (!featureName) {
-          for (const r of records) process.stdout.write(`  ${decodeTlvRecord(r)}\n`);
-          break;
-        }
-        const ioClass = t.io?.ioClass ?? CLASS_DIMM;
-        const obj = t.entry?.objects[ioClass];
-        const feature = obj ? Object.values(obj.features).find(f => f.name.toLowerCase() === featureName.toLowerCase()) : null;
-        if (!feature) {
-          const avail = obj ? Object.values(obj.features).filter(f => f.get).map(f => f.name).join(', ') : '(no transcript)';
-          process.stdout.write(`Unknown feature: ${featureName}. Readable: ${avail}\n`);
-          return;
-        }
-        if (!feature.get) { process.stdout.write(`Feature ${feature.name} is write-only.\n`); return; }
-        const tlvType = GET_WIRE[ioClass]?.[feature.index];
-        if (tlvType === undefined) {
-          process.stdout.write(`No TLV mapping for ${feature.name} (class=${ioClass} idx=${feature.index}). All records:\n`);
-          for (const r of records) process.stdout.write(`  ${decodeTlvRecord(r)}\n`);
-          break;
-        }
-        const match = records.find(r => r.type === tlvType);
-        if (!match) { process.stdout.write(`  ${feature.name}: (not present in response)\n`); break; }
-        process.stdout.write(`  ${feature.name}: ${decodeValue(match.type, match.data)}\n`);
-        break;
-      }
-
-      case 'status': {
-        const t = resolveTarget(args[0]);
-        if (!t) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
-        transport.enqueue(statusPollFrame(t.addr));
-        const buf = await rxAfterTx(t.addr, 0x04);
-        if (!buf) { process.stdout.write('No response.\n'); return; }
-        const frame = parseRxFrame(buf);
-        if (!frame) { process.stdout.write(`Bad frame: ${buf.toString('hex')}\n`); return; }
-        const { records, raw } = parseStatusPoll(frame.payload);
-        if (records === null) { process.stdout.write(`raw: ${raw.toString('hex')}\n`); return; }
-        if (records.length === 0) { process.stdout.write('Empty response.\n'); return; }
-        for (const r of records) {
-          process.stdout.write(`  ${decodeTlvRecord(r)}\n`);
-        }
-        break;
-      }
-
-      case 'version': {
-        const t = resolveTarget(args[0]);
-        if (!t) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
-        transport.enqueue(versionQueryFrame(t.addr));
-        const buf = await rxAfterTx(t.addr, 0xF9);
-        if (!buf) { process.stdout.write('No response.\n'); return; }
-        const frame = parseRxFrame(buf);
-        if (!frame || frame.payload.length === 0) { process.stdout.write('No version data.\n'); return; }
-        const ver = parseVersionResponse(frame.payload);
-        process.stdout.write(`  raw: ${frame.payload.toString('hex')}\n`);
-        if (ver) process.stdout.write(`  ${JSON.stringify(ver)}\n`);
-        break;
-      }
-
-      case 'set': {
-        const t = resolveTarget(args[0]);
-        if (!t) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
-        const featureName = args[1];
-        const rawValue = args[2];
-        if (!featureName || rawValue === undefined) { process.stdout.write('Usage: set <name|addr> <Feature> <value>\n'); return; }
-        const value = Number(rawValue);
-        if (isNaN(value)) { process.stdout.write(`Invalid value: ${rawValue}\n`); return; }
-        const ioClass = t.io?.ioClass ?? CLASS_DIMM;
-        const chanIdx = t.io?.chanIdx ?? 0;
-        const obj = t.entry?.objects[ioClass];
-        const feature = obj ? Object.values(obj.features).find(f => f.name.toLowerCase() === featureName.toLowerCase()) : null;
-        if (!feature) {
-          const avail = obj ? Object.values(obj.features).filter(f => f.set).map(f => f.name).join(', ') : '(no transcript)';
-          process.stdout.write(`Unknown feature: ${featureName}. Settable: ${avail}\n`);
-          return;
-        }
-        if (!feature.set) { process.stdout.write(`Feature ${feature.name} is read-only.\n`); return; }
-        const fn = SET_WIRE[ioClass]?.[feature.index];
-        if (!fn) {
-          process.stdout.write(`No wire encoding for ${feature.name} (class=${ioClass} idx=${feature.index}).\n`);
-          return;
-        }
-        transport.enqueue(fn(t.addr, chanIdx, [value]));
-        process.stdout.write(`set ${feature.name}=${value} → addr=${t.addr} [${t.label}]\n`);
-        await showResponse(t.addr, 0xF0);
-        break;
-      }
-
-      case 'execute':
-      case 'exec': {
-        const t = resolveTarget(args[0]);
-        if (!t) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
-        const methodName = args[1];
-        if (!methodName) { process.stdout.write('Usage: execute <name|addr> <Method> [param…]\n'); return; }
-        const params = args.slice(2).map(Number);
-        const ioClass = t.io?.ioClass ?? CLASS_DIMM;
-        const chanIdx = t.io?.chanIdx ?? 0;
-        const obj = t.entry?.objects[ioClass];
-        const method = obj ? Object.values(obj.methods).find(m => m.name.toLowerCase() === methodName.toLowerCase()) : null;
-        if (!method) {
-          const avail = obj ? Object.values(obj.methods).map(m => `${m.name}(${m.params.map(p => p.name).join(',')})`).join(', ') : '(no transcript)';
-          process.stdout.write(`Unknown method: ${methodName}. Available: ${avail}\n`);
-          return;
-        }
-        const wire = method.call === 'set' ? SET_WIRE : EXEC_WIRE;
-        const fn = wire[ioClass]?.[method.index];
-        if (!fn) {
-          process.stdout.write(`No wire encoding for ${method.name} (class=${ioClass} idx=${method.index} call=${method.call}).\n`);
-          return;
-        }
-        transport.enqueue(fn(t.addr, chanIdx, params));
-        const paramStr = method.params.map((p, i) => `${p.name}=${params[i] ?? '?'}`).join(', ');
-        process.stdout.write(`execute ${method.name}(${paramStr}) → addr=${t.addr} [${t.label}]\n`);
-        await showResponse(t.addr, 0xF0);
-        break;
-      }
-
-      case 'listen': {
-        const firstIsSeconds = args[0] !== undefined && /^\d+$/.test(args[0]);
-        if (!args[0] || firstIsSeconds) {
-          const secs = firstIsSeconds ? Math.max(1, parseInt(args[0], 10)) : 5;
-          const globalLabel = (addr: number) => {
-            const hit = addrIndex.get(addr);
-            return hit ? (hit.module.ioNames[0] ?? hit.entry?.name ?? `addr=${addr}`) : `addr=${addr}`;
-          };
-          await listenModule(transport, null, globalLabel, secs);
-        } else {
-          const t = resolveTarget(args[0]);
-          if (!t) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
-          const secs = Math.max(1, parseInt(args[1] ?? '5', 10));
-          await listenModule(transport, t.addr, () => t.label, secs);
-        }
-        break;
-      }
-
-      case 'busload': {
-        const secs = Math.max(1, parseInt(args[0] ?? '10', 10));
-        await measureBusLoad(transport, secs, baud);
-        break;
-      }
-
-      case 'on': {
-        const t = resolveTarget(args[0]);
-        if (!t) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
-        transport.enqueue(buildOnOff(t, true));
-        process.stdout.write(`sent ON → addr=${t.addr} [${t.label}]\n`);
-        await showResponse(t.addr, 0xF0);
-        break;
-      }
-
-      case 'off': {
-        const t = resolveTarget(args[0]);
-        if (!t) { process.stdout.write(`Unknown target: ${args[0]}\n`); return; }
-        transport.enqueue(buildOnOff(t, false));
-        process.stdout.write(`sent OFF → addr=${t.addr} [${t.label}]\n`);
-        await showResponse(t.addr, 0xF0);
-        break;
-      }
-
-      case 'help':
-        printHelp();
-        break;
-
-      case '':
-        break;
-
-      default:
-        process.stdout.write(`Unknown command: ${cmd}. Type 'help' for usage.\n`);
-    }
-    } finally {
-      if (needsSerial) await transport.close();
-    }
+function findByFields(transcript: ModuleTranscript, hwType: number, fwVer: number): ModuleEntry | null {
+  const byFwType = (transcript as Record<number, Record<number, Record<number, ModuleEntry>>>)[hwType];
+  if (!byFwType) return null;
+  for (const byFwApiVer of Object.values(byFwType)) {
+    const entry = byFwApiVer[fwVer];
+    if (entry) return entry;
   }
-
-  printHelp();
-
-  const COMMANDS = ['list', 'ls', 'get', 'info', 'status', 'version', 'set', 'execute', 'exec', 'listen', 'busload', 'on', 'off', 'help', 'exit', 'quit'];
-  const TARGET_CMDS = new Set(['get', 'info', 'status', 'version', 'set', 'execute', 'exec', 'listen', 'on', 'off']);
-
-  function completer(line: string): [string[], string] {
-    const parts = line.split(/\s+/);
-
-    if (parts.length <= 1) {
-      const prefix = parts[0] ?? '';
-      const hits = COMMANDS.filter(c => c.startsWith(prefix));
-      return [hits.length ? hits : COMMANDS, prefix];
-    }
-
-    const cmd = parts[0].toLowerCase();
-    const argIdx = parts.length - 1;
-    const current = parts[argIdx] ?? '';
-
-    if (argIdx === 1 && TARGET_CMDS.has(cmd)) {
-      const names = [...nameIndex.values()].map(v => v.io.name);
-      const hits = names.filter(n => n.toLowerCase().startsWith(current.toLowerCase()));
-      return [hits.length ? hits : names, current];
-    }
-
-    if (argIdx === 2 && (cmd === 'get' || cmd === 'set' || cmd === 'execute' || cmd === 'exec')) {
-      const t = resolveTarget(parts[1]);
-      if (t?.entry) {
-        const ioClass = t.io?.ioClass ?? CLASS_DIMM;
-        const obj = t.entry.objects[ioClass];
-        if (obj) {
-          const candidates = cmd === 'get'
-            ? Object.values(obj.features).filter(f => f.get).map(f => f.name)
-            : cmd === 'set'
-              ? Object.values(obj.features).filter(f => f.set).map(f => f.name)
-              : Object.values(obj.methods).map(m => m.name);
-          const hits = candidates.filter(n => n.toLowerCase().startsWith(current.toLowerCase()));
-          return [hits.length ? hits : candidates, current];
-        }
-      }
-    }
-
-    return [[], current];
-  }
-
-  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true, completer });
-
-  function prompt() {
-    rl.question('tfbus> ', async (line) => {
-      const parts = line.trim().split(/\s+/);
-      const cmd = parts[0]?.toLowerCase() ?? '';
-      if (cmd === 'exit' || cmd === 'quit') {
-        rl.close();
-        return;
-      }
-      try {
-        await dispatch(cmd, parts.slice(1));
-      } catch (err) {
-        process.stdout.write(`error: ${(err as Error).message}\n`);
-      }
-      prompt();
-    });
-  }
-
-  prompt();
-  await new Promise<void>((resolve) => rl.on('close', resolve));
+  return Object.values(Object.values(byFwType)[0] ?? {})[0] ?? null;
 }
 
 // ─── Listen helper ────────────────────────────────────────────────────────────
-
-function ts() { return new Date().toISOString().slice(11, 23); }
-
 
 async function listenModule(
   transport: Pick<TFBusTransport, 'dequeue'>,
   addr: number | null,
   labelFn: (addr: number) => string,
-  secs: number,
+  seconds: number,
 ): Promise<void> {
-  process.stdout.write(`Listening to ${addr === null ? 'all modules' : `[${labelFn(addr)}]`} for ${secs}s…\n`);
-  const deadline = Date.now() + secs * 1000;
+  process.stdout.write(`Listening to ${addr === null ? 'all modules' : `[${labelFn(addr)}]`} for ${seconds}s…\n`);
+  const deadline = Date.now() + seconds * 1000;
   let lastTxType: number | null = null;
   let lastTxAddr: number | null = null;
   let pollCount = 0;
   const lastOutput = new Map<number, string>();
 
   while (Date.now() < deadline) {
-    const buf = await transport.dequeue();
-    if (buf === null || buf.length < 4 || buf[0] !== 0xAA) continue;
+    const rawFrame = await transport.dequeue();
+    if (rawFrame === null || rawFrame.length < 4 || rawFrame[0] !== 0xAA) continue;
 
-    if (addr !== null ? buf[1] === addr : buf[1] !== 0x00) {
-      const txf = parseBusTxFrame(buf);
-      if (txf) {
-        lastTxType = txf.type;
-        if (addr === null) lastTxAddr = buf[1];
+    if (addr !== null ? rawFrame[1] === addr : rawFrame[1] !== 0x00) {
+      const txFrame = parseBusTxFrame(rawFrame);
+      if (txFrame) {
+        lastTxType = txFrame.type;
+        if (addr === null) lastTxAddr = rawFrame[1];
       }
       continue;
     }
 
-    if (buf[1] !== 0x00 || lastTxType === null) continue;
+    if (rawFrame[1] !== 0x00 || lastTxType === null) continue;
 
-    const srcAddr = addr ?? lastTxAddr ?? 0;
-    const src = labelFn(srcAddr);
-    const rxFrame = parseRxFrame(buf);
+    const sourceAddr = addr ?? lastTxAddr ?? 0;
+    const sourceLabel = labelFn(sourceAddr);
+    const rxFrame = parseRxFrame(rawFrame);
     if (!rxFrame) continue;
 
     if (lastTxType === 0x04) {
       const { records, raw } = parseStatusPoll(rxFrame.payload);
       if (records === null) {
-        process.stdout.write(`[${ts()}] ${src} raw: ${raw.toString('hex')}\n`);
+        process.stdout.write(`[${timestamp()}] ${sourceLabel} raw: ${raw.toString('hex')}\n`);
       } else if (records.length > 0) {
-        const decoded = records.map(r => decodeTlvRecord(r)).join(' | ');
-        if (lastOutput.get(srcAddr) !== decoded) {
-          process.stdout.write(`[${ts()}] ${src} ${decoded}\n`);
-          lastOutput.set(srcAddr, decoded);
+        const decoded = records.map(record => decodeTlvRecord(record)).join(' | ');
+        if (lastOutput.get(sourceAddr) !== decoded) {
+          process.stdout.write(`[${timestamp()}] ${sourceLabel} ${decoded}\n`);
+          lastOutput.set(sourceAddr, decoded);
           pollCount++;
         }
       }
     } else if (lastTxType === 0xF9) {
-      const ver = parseVersionResponse(rxFrame.payload);
-      process.stdout.write(`[${ts()}] ${src} version: ${rxFrame.payload.toString('hex')}${ver ? ` ${JSON.stringify(ver)}` : ''}\n`);
+      const version = parseVersionResponse(rxFrame.payload);
+      process.stdout.write(`[${timestamp()}] ${sourceLabel} version: ${rxFrame.payload.toString('hex')}${version ? ` ${JSON.stringify(version)}` : ''}\n`);
     }
 
     lastTxType = null;
     if (addr === null) lastTxAddr = null;
   }
 
-  process.stdout.write(`Done — ${pollCount} STATUS_POLL frame(s) in ${secs}s.\n`);
+  process.stdout.write(`Done — ${pollCount} STATUS_POLL frame(s) in ${seconds}s.\n`);
 }
+
+function timestamp() { return new Date().toISOString().slice(11, 23); }
 
 // ─── Bus load measurement ─────────────────────────────────────────────────────
 
 async function measureBusLoad(
   transport: Pick<TFBusTransport, 'dequeue'>,
-  secs: number,
+  seconds: number,
   baud: number,
 ): Promise<void> {
-  process.stdout.write(`Measuring bus load for ${secs}s @ ${baud} baud…\n`);
-  const deadline = Date.now() + secs * 1000;
+  process.stdout.write(`Measuring bus load for ${seconds}s @ ${baud} baud…\n`);
+  const deadline = Date.now() + seconds * 1000;
   const start = Date.now();
 
   let totalFrames = 0;
@@ -641,16 +604,16 @@ async function measureBusLoad(
   let rxBytes = 0;
 
   while (Date.now() < deadline) {
-    const buf = await transport.dequeue();
-    if (buf === null || buf.length < 4 || buf[0] !== 0xAA) continue;
+    const rawFrame = await transport.dequeue();
+    if (rawFrame === null || rawFrame.length < 4 || rawFrame[0] !== 0xAA) continue;
     totalFrames++;
-    totalBytes += buf.length;
-    if (buf[1] === 0x00) {
+    totalBytes += rawFrame.length;
+    if (rawFrame[1] === 0x00) {
       rxFrames++;
-      rxBytes += buf.length;
+      rxBytes += rawFrame.length;
     } else {
       txFrames++;
-      txBytes += buf.length;
+      txBytes += rawFrame.length;
     }
   }
 
@@ -659,7 +622,7 @@ async function measureBusLoad(
   const configuredCapacity = baud / 10;               // bytes/s at configured baud
   const observedBps = totalBytes / elapsed;           // actual bytes/s observed
   const effectiveBaud = observedBps * 10;             // derive actual baud from traffic
-  const utilPct = observedBps / configuredCapacity * 100;
+  const utilizationPct = observedBps / configuredCapacity * 100;
 
   process.stdout.write(
     `\n  elapsed:     ${elapsed.toFixed(1)}s\n` +
@@ -668,22 +631,57 @@ async function measureBusLoad(
     `    RX→CLU:    ${rxFrames} frames, ${rxBytes} B\n` +
     `  total bytes: ${totalBytes} (${observedBps.toFixed(0)} B/s)\n` +
     `  configured:  ${baud} baud  (capacity ${configuredCapacity.toFixed(0)} B/s)\n` +
-    `  effective:   ${effectiveBaud.toFixed(0)} baud  (utilisation ${utilPct.toFixed(1)}%)\n`,
+    `  effective:   ${effectiveBaud.toFixed(0)} baud  (utilisation ${utilizationPct.toFixed(1)}%)\n`,
   );
 }
 
 // ─── ON/OFF frame builder ─────────────────────────────────────────────────────
 
-function buildOnOff(t: Target, on: boolean): Buffer {
-  const ioClass = t.io?.ioClass ?? CLASS_DIMM;
-  const chanIdx = t.io?.chanIdx ?? 0;
+function buildOnOff(target: Target, turnOn: boolean): Buffer {
+  const ioClass = target.ioInfo?.ioClass ?? CLASS_DIMM;
+  const chanIdx = target.ioInfo?.chanIdx ?? 0;
 
   if (ioClass === CLASS_DOUT) {
     const mask = (1 << chanIdx) & 0xFF;
-    return moduleCmdFrame(t.addr, [setOutputRecord(mask, on ? 1 : 0)]);
+    return moduleCmdFrame(target.addr, [setOutputRecord(mask, turnOn ? 1 : 0)]);
   }
-  if (on) {
-    return moduleCmdFrame(t.addr, [activateRecord(0x80)]);
+  if (turnOn) {
+    return moduleCmdFrame(target.addr, [activateRecord(0x80)]);
   }
-  return moduleCmdFrame(t.addr, [deactivateRecord(0x01)]);
+  return moduleCmdFrame(target.addr, [deactivateRecord(0x01)]);
+}
+
+// ─── TLV decoding (shared with monitor) ──────────────────────────────────────
+
+function decodeTlvRecord(record: { type: number; meta: number; data: Buffer }): string {
+  const typeName = TLV_NAMES[record.type] ?? `0x${record.type.toString(16).padStart(2, '0')}`;
+  return `${typeName}: ${decodeValue(record.type, record.data)}`;
+}
+
+const TLV_NAMES: Record<number, string> = Object.fromEntries(
+  Object.entries(TLVType).map(([typeName, typeValue]) => [typeValue as number, typeName]),
+);
+
+function decodeValue(type: number, data: Buffer): string {
+  switch (type) {
+    case TLVType.TEMPERATURE:
+      return data.length >= 2 ? `${(data.readUInt16LE(0) / 100).toFixed(2)}°C` : data.toString('hex');
+    case TLVType.LIGHT:
+      return data.length >= 2 ? `${(data.readUInt16LE(0) / 100).toFixed(2)}%` : data.toString('hex');
+    case TLVType.ROLLER_POSITION:
+      return data.length >= 3
+        ? `ch${data[0]} ${data[1]}%${data[2] !== 0 ? ' moving' : ' stopped'}`
+        : data.toString('hex');
+    case TLVType.INPUT_BITMASK:
+      return `0b${data[0].toString(2).padStart(8, '0')}`;
+    case TLVType.STATE:
+      if (data.length >= 2) return `${(data.readUInt16LE(0) / 10).toFixed(1)}%`;
+      return data[0] === 0 ? 'idle' : 'active';
+    case TLVType.DIGITAL_STATE:
+      return data[0] === 0 ? 'idle' : 'active';
+    case TLVType.POLL_COUNTER:
+      return String(data[0]);
+    default:
+      return data.toString('hex');
+  }
 }

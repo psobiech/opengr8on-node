@@ -19,48 +19,48 @@ describe('mqttStateFrom', () => {
 
 describe('mqttBrightnessState', () => {
   it('brightness > 0 → ON', () => {
-    const s = mqttBrightnessState(50);
-    assert.equal(s.state, 'ON');
-    assert.equal(s.brightness, 50);
-    assert.equal(s.color_mode, 'brightness');
+    const state = mqttBrightnessState(50);
+    assert.equal(state.state, 'ON');
+    assert.equal(state.brightness, 50);
+    assert.equal(state.color_mode, 'brightness');
   });
 
   it('brightness = 0 → OFF', () => {
-    const s = mqttBrightnessState(0);
-    assert.equal(s.state, 'OFF');
-    assert.equal(s.brightness, 0);
+    const state = mqttBrightnessState(0);
+    assert.equal(state.state, 'OFF');
+    assert.equal(state.brightness, 0);
   });
 
   it('brightness = 255', () => {
-    const s = mqttBrightnessState(255);
-    assert.equal(s.state, 'ON');
-    assert.equal(s.brightness, 255);
+    const state = mqttBrightnessState(255);
+    assert.equal(state.state, 'ON');
+    assert.equal(state.brightness, 255);
   });
 });
 
 describe('mqttRgbwState', () => {
   it('all zeros → OFF', () => {
-    const s = mqttRgbwState(0, 0, 0, 0);
-    assert.equal(s.state, 'OFF');
-    assert.equal(s.brightness, 0);
+    const state = mqttRgbwState(0, 0, 0, 0);
+    assert.equal(state.state, 'OFF');
+    assert.equal(state.brightness, 0);
   });
 
   it('any non-zero → ON', () => {
-    const s = mqttRgbwState(255, 0, 0, 0);
-    assert.equal(s.state, 'ON');
+    const state = mqttRgbwState(255, 0, 0, 0);
+    assert.equal(state.state, 'ON');
   });
 
   it('color fields set correctly', () => {
-    const s = mqttRgbwState(10, 20, 30, 40);
-    assert.equal(s.color.r, 10);
-    assert.equal(s.color.g, 20);
-    assert.equal(s.color.b, 30);
-    assert.equal(s.color.w, 40);
+    const state = mqttRgbwState(10, 20, 30, 40);
+    assert.equal(state.color.r, 10);
+    assert.equal(state.color.g, 20);
+    assert.equal(state.color.b, 30);
+    assert.equal(state.color.w, 40);
   });
 
   it('brightness is max channel', () => {
-    const s = mqttRgbwState(10, 200, 50, 100);
-    assert.equal(s.brightness, 200);
+    const state = mqttRgbwState(10, 200, 50, 100);
+    assert.equal(state.brightness, 200);
   });
 
   it('color_mode is rgbw', () => {
@@ -70,9 +70,9 @@ describe('mqttRgbwState', () => {
 
 describe('parseShutterState', () => {
   const valid = ['OPEN', 'OPENING', 'CLOSE', 'CLOSING', 'STOP'];
-  for (const s of valid) {
-    it(`${s} → ${s}`, () => assert.equal(parseShutterState(s), s));
-    it(`lowercase ${s.toLowerCase()} → ${s}`, () => assert.equal(parseShutterState(s.toLowerCase()), s));
+  for (const state of valid) {
+    it(`${state} → ${state}`, () => assert.equal(parseShutterState(state), state));
+    it(`lowercase ${state.toLowerCase()} → ${state}`, () => assert.equal(parseShutterState(state.toLowerCase()), state));
   }
 
   it('unknown string → null', () => assert.equal(parseShutterState('UNKNOWN'), null));

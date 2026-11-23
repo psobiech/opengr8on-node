@@ -3,62 +3,34 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { MqttTopic, MQTT_TOPIC_FEATURES, MQTT_TOPIC_METHODS, MQTT_TOPIC_EVENTS } from '../../dist/vclu/MqttTopic.js';
 
-function makeMockClient() {
-  const client = new EventEmitter();
-  client.subscriptions = [];
-  client.published = [];
-  client.subscribe = (topic, _opts, cb) => { client.subscriptions.push(topic); cb?.(null); };
-  client.unsubscribe = (topic) => { client.subscriptions = client.subscriptions.filter(t => t !== topic); };
-  client.publish = (topic, payload) => { client.published.push({ topic, payload }); };
-  return client;
-}
-
-function makeMockSystem(mqttClient, cluState = 1) {
-  const clu = { state: cluState, getMqttClient: () => mqttClient };
-  return { getVirtualClu: () => clu };
-}
-
-function awaitMessage(mqttTopic) {
-  return new Promise(resolve => {
-    mqttTopic.addEventHandler(MQTT_TOPIC_EVENTS.MESSAGE, () => resolve());
-  });
-}
-
-function makeTopicWithClient(cluState = 1) {
-  const client = makeMockClient();
-  const system = makeMockSystem(client, cluState);
-  const topic = new MqttTopic(system, 'test');
-  return { client, system, topic };
-}
-
 describe('MqttTopic', () => {
   it('INDEX is 999', () => {
     assert.equal(MqttTopic.INDEX, 999);
   });
 
   it('initial TOPIC is null', () => {
-    const t = new MqttTopic(null, 'test');
-    assert.equal(t.get(MQTT_TOPIC_FEATURES.TOPIC), null);
+    const mqttTopic = new MqttTopic(null, 'test');
+    assert.equal(mqttTopic.get(MQTT_TOPIC_FEATURES.TOPIC), null);
   });
 
   it('initial MESSAGE is null', () => {
-    const t = new MqttTopic(null, 'test');
-    assert.equal(t.get(MQTT_TOPIC_FEATURES.MESSAGE), null);
+    const mqttTopic = new MqttTopic(null, 'test');
+    assert.equal(mqttTopic.get(MQTT_TOPIC_FEATURES.MESSAGE), null);
   });
 
   it('SUBSCRIBE without client returns false', () => {
-    const t = new MqttTopic(null, 'test');
-    assert.equal(t.execute(MQTT_TOPIC_METHODS.SUBSCRIBE, 'home/temp'), false);
+    const mqttTopic = new MqttTopic(null, 'test');
+    assert.equal(mqttTopic.execute(MQTT_TOPIC_METHODS.SUBSCRIBE, 'home/temp'), false);
   });
 
   it('UNSUBSCRIBE without client returns false', () => {
-    const t = new MqttTopic(null, 'test');
-    assert.equal(t.execute(MQTT_TOPIC_METHODS.UNSUBSCRIBE, 'home/temp'), false);
+    const mqttTopic = new MqttTopic(null, 'test');
+    assert.equal(mqttTopic.execute(MQTT_TOPIC_METHODS.UNSUBSCRIBE, 'home/temp'), false);
   });
 
   it('PUBLISH without client returns false', () => {
-    const t = new MqttTopic(null, 'test');
-    assert.equal(t.execute(MQTT_TOPIC_METHODS.PUBLISH, 'home/temp', 'hello'), false);
+    const mqttTopic = new MqttTopic(null, 'test');
+    assert.equal(mqttTopic.execute(MQTT_TOPIC_METHODS.PUBLISH, 'home/temp', 'hello'), false);
   });
 
   it('setup() with CLU state OK fires INIT event', () => {
@@ -109,54 +81,54 @@ describe('MqttTopic', () => {
 
   it('MESSAGE event fires on incoming message', () => {
     const { client, topic } = makeTopicWithClient();
-    const p = awaitMessage(topic);
+    const messagePromise = awaitMessage(topic);
     topic.execute(MQTT_TOPIC_METHODS.SUBSCRIBE, 'home/temp');
     client.emit('message', 'home/temp', Buffer.from('hello'), {});
-    return p;
+    return messagePromise;
   });
 
   it('TOPIC feature set to incoming topic', async () => {
     const { client, topic } = makeTopicWithClient();
-    const p = awaitMessage(topic);
+    const messagePromise = awaitMessage(topic);
     topic.execute(MQTT_TOPIC_METHODS.SUBSCRIBE, 'home/temp');
     client.emit('message', 'home/temp', Buffer.from('hello'), {});
-    await p;
+    await messagePromise;
     assert.equal(topic.get(MQTT_TOPIC_FEATURES.TOPIC), 'home/temp');
   });
 
   it('MESSAGE feature set to parsed payload', async () => {
     const { client, topic } = makeTopicWithClient();
-    const p = awaitMessage(topic);
+    const messagePromise = awaitMessage(topic);
     topic.execute(MQTT_TOPIC_METHODS.SUBSCRIBE, 'home/temp');
     client.emit('message', 'home/temp', Buffer.from('hello'), {});
-    await p;
+    await messagePromise;
     assert.equal(topic.get(MQTT_TOPIC_FEATURES.MESSAGE), 'hello');
   });
 
   it('JSON payload parsed as object', async () => {
     const { client, topic } = makeTopicWithClient();
-    const p = awaitMessage(topic);
+    const messagePromise = awaitMessage(topic);
     topic.execute(MQTT_TOPIC_METHODS.SUBSCRIBE, 'home/temp');
     client.emit('message', 'home/temp', Buffer.from('{"val":42}'), {});
-    await p;
+    await messagePromise;
     assert.deepEqual(topic.get(MQTT_TOPIC_FEATURES.MESSAGE), { val: 42 });
   });
 
   it('plain text payload stays as string', async () => {
     const { client, topic } = makeTopicWithClient();
-    const p = awaitMessage(topic);
+    const messagePromise = awaitMessage(topic);
     topic.execute(MQTT_TOPIC_METHODS.SUBSCRIBE, 'home/temp');
     client.emit('message', 'home/temp', Buffer.from('hello'), {});
-    await p;
+    await messagePromise;
     assert.equal(typeof topic.get(MQTT_TOPIC_FEATURES.MESSAGE), 'string');
   });
 
   it('number payload parsed as number (42 → 42)', async () => {
     const { client, topic } = makeTopicWithClient();
-    const p = awaitMessage(topic);
+    const messagePromise = awaitMessage(topic);
     topic.execute(MQTT_TOPIC_METHODS.SUBSCRIBE, 'home/temp');
     client.emit('message', 'home/temp', Buffer.from('42'), {});
-    await p;
+    await messagePromise;
     assert.equal(topic.get(MQTT_TOPIC_FEATURES.MESSAGE), 42);
   });
 
@@ -172,19 +144,19 @@ describe('MqttTopic', () => {
 
   it('+ wildcard matches single level', async () => {
     const { client, topic } = makeTopicWithClient();
-    const p = awaitMessage(topic);
+    const messagePromise = awaitMessage(topic);
     topic.execute(MQTT_TOPIC_METHODS.SUBSCRIBE, 'home/+/temp');
     client.emit('message', 'home/room1/temp', Buffer.from('1'), {});
-    await p;
+    await messagePromise;
     assert.equal(topic.get(MQTT_TOPIC_FEATURES.TOPIC), 'home/room1/temp');
   });
 
   it('# wildcard matches multiple levels', async () => {
     const { client, topic } = makeTopicWithClient();
-    const p = awaitMessage(topic);
+    const messagePromise = awaitMessage(topic);
     topic.execute(MQTT_TOPIC_METHODS.SUBSCRIBE, 'home/#');
     client.emit('message', 'home/a/b/c', Buffer.from('1'), {});
-    await p;
+    await messagePromise;
     assert.equal(topic.get(MQTT_TOPIC_FEATURES.TOPIC), 'home/a/b/c');
   });
 
@@ -210,3 +182,31 @@ describe('MqttTopic', () => {
     });
   });
 });
+
+function makeTopicWithClient(cluState = 1) {
+  const client = makeMockClient();
+  const system = makeMockSystem(client, cluState);
+  const topic = new MqttTopic(system, 'test');
+  return { client, system, topic };
+}
+
+function awaitMessage(mqttTopic) {
+  return new Promise(resolve => {
+    mqttTopic.addEventHandler(MQTT_TOPIC_EVENTS.MESSAGE, () => resolve());
+  });
+}
+
+function makeMockClient() {
+  const client = new EventEmitter();
+  client.subscriptions = [];
+  client.published = [];
+  client.subscribe = (topic, _opts, callback) => { client.subscriptions.push(topic); callback?.(null); };
+  client.unsubscribe = (topic) => { client.subscriptions = client.subscriptions.filter(subscribedTopic => subscribedTopic !== topic); };
+  client.publish = (topic, payload) => { client.published.push({ topic, payload }); };
+  return client;
+}
+
+function makeMockSystem(mqttClient, cluState = 1) {
+  const clu = { state: cluState, getMqttClient: () => mqttClient };
+  return { getVirtualClu: () => clu };
+}

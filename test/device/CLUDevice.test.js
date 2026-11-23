@@ -26,72 +26,72 @@ describe('CLUDevice', () => {
 
   describe('constructor', () => {
     it('stores fields', () => {
-      const d = new CLUDevice({ serialNumber: SERIAL, macAddress: MAC, address: ADDRESS });
-      assert.equal(d.serialNumber, SERIAL);
-      assert.equal(d.macAddress, MAC);
-      assert.equal(d.address, ADDRESS);
-      assert.equal(d.cipherType, CipherType.UNKNOWN);
+      const device = new CLUDevice({ serialNumber: SERIAL, macAddress: MAC, address: ADDRESS });
+      assert.equal(device.serialNumber, SERIAL);
+      assert.equal(device.macAddress, MAC);
+      assert.equal(device.address, ADDRESS);
+      assert.equal(device.cipherType, CipherType.UNKNOWN);
     });
 
     it('strips colons from macAddress', () => {
-      const d = new CLUDevice({ macAddress: 'AA:BB:CC:DD:EE:FF' });
-      assert.equal(d.macAddress, 'AABBCCDDEEFF');
+      const device = new CLUDevice({ macAddress: 'AA:BB:CC:DD:EE:FF' });
+      assert.equal(device.macAddress, 'AABBCCDDEEFF');
     });
 
     it('default cipherType is UNKNOWN', () => {
-      const d = new CLUDevice({});
-      assert.equal(d.cipherType, CipherType.UNKNOWN);
+      const device = new CLUDevice({});
+      assert.equal(device.cipherType, CipherType.UNKNOWN);
     });
 
     it('default port is 1234', () => {
-      const d = new CLUDevice({});
-      assert.equal(d.port, 1234);
+      const device = new CLUDevice({});
+      assert.equal(device.port, 1234);
     });
 
     it('accepts Buffer iv and privateKey', () => {
-      const d = new CLUDevice({ iv, privateKey });
-      assert.ok(d.iv.equals(iv));
-      assert.ok(d.privateKey.equals(privateKey));
+      const device = new CLUDevice({ iv, privateKey });
+      assert.ok(device.iv.equals(iv));
+      assert.ok(device.privateKey.equals(privateKey));
     });
   });
 
   describe('getCipherKey', () => {
     it('returns null when iv or privateKey missing', () => {
-      const d = new CLUDevice({ address: ADDRESS });
-      assert.equal(d.getCipherKey(), null);
+      const device = new CLUDevice({ address: ADDRESS });
+      assert.equal(device.getCipherKey(), null);
     });
 
     it('returns CipherKey derived from iv + privateKey', () => {
-      const d = new CLUDevice({ iv, privateKey });
-      const ck = d.getCipherKey();
-      assert.ok(ck instanceof CipherKey);
+      const device = new CLUDevice({ iv, privateKey });
+      const cipherKey = device.getCipherKey();
+      assert.ok(cipherKey instanceof CipherKey);
       const expected = CipherKey.getInitialCipherKey(iv, privateKey);
-      assert.ok(ck.getSecretKey().equals(expected.getSecretKey()));
-      assert.ok(ck.getIV().equals(expected.getIV()));
+      assert.ok(cipherKey.getSecretKey().equals(expected.getSecretKey()));
+      assert.ok(cipherKey.getIV().equals(expected.getIV()));
     });
 
     it('caches the result', () => {
-      const d = new CLUDevice({ iv, privateKey });
-      const ck1 = d.getCipherKey();
-      const ck2 = d.getCipherKey();
+      const device = new CLUDevice({ iv, privateKey });
+      const ck1 = device.getCipherKey();
+      const ck2 = device.getCipherKey();
       assert.equal(ck1, ck2);
     });
   });
 
   describe('setCipherKey', () => {
     it('overrides derived key', () => {
-      const d = new CLUDevice({ iv, privateKey });
+      const device = new CLUDevice({ iv, privateKey });
       const override = CipherKey.random();
-      d.setCipherKey(override);
-      assert.equal(d.getCipherKey(), override);
+      device.setCipherKey(override);
+      assert.equal(device.getCipherKey(), override);
     });
   });
 
   describe('setAddress', () => {
     it('updates address', () => {
-      const d = new CLUDevice({ address: ADDRESS });
-      d.setAddress('10.0.0.99');
-      assert.equal(d.address, '10.0.0.99');
+      const device = new CLUDevice({ address: ADDRESS });
+      device.setAddress('10.0.0.99');
+      assert.equal(device.address, '10.0.0.99');
     });
   });
 });

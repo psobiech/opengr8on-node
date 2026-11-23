@@ -107,9 +107,9 @@ export class ProjectRegistry {
     return this._cluByName.get(name) ?? null;
   }
 
-  getCluByIp(ip: string): ProjectClu | null {
+  getCluByIp(ipAddress: string): ProjectClu | null {
     for (const clu of this._cluByName.values()) {
-      if (clu.ipAddress === ip) return clu;
+      if (clu.ipAddress === ipAddress) return clu;
     }
     return null;
   }
@@ -119,7 +119,7 @@ export class ProjectRegistry {
   }
 
   getObjectOnClu(cluName: string, nameOnClu: string): ProjectObject | null {
-    return this.getObjectsForClu(cluName).find((o) => o.nameOnClu === nameOnClu) ?? null;
+    return this.getObjectsForClu(cluName).find((projectObject) => projectObject.nameOnClu === nameOnClu) ?? null;
   }
 
   get properties(): ProjectProperties { return this._properties; }
@@ -169,13 +169,13 @@ function parseProperties(xml: string): ProjectProperties {
     if (typeof root['ivBytes'] === 'string') result.projectIV = Buffer.from(root['ivBytes'], 'base64');
 
     const encClu = root['encryptedCLU'] as Record<string, unknown> | undefined;
-    for (const e of toArray(encClu?.['entry'])) {
-      const entry = e as Record<string, unknown>;
-      const ip = str(entry['string']);
-      if (ip) result.encryptedClus.set(ip, entry['boolean'] === true || entry['boolean'] === 'true');
+    for (const entryNode of toArray(encClu?.['entry'])) {
+      const entry = entryNode as Record<string, unknown>;
+      const cluIpAddress = str(entry['string']);
+      if (cluIpAddress) result.encryptedClus.set(cluIpAddress, entry['boolean'] === true || entry['boolean'] === 'true');
     }
-  } catch (e) {
-    console.warn('[ProjectRegistry] failed to parse properties.xml:', e);
+  } catch (error) {
+    console.warn('[ProjectRegistry] failed to parse properties.xml:', error);
   }
 
   return result;
@@ -191,8 +191,8 @@ function parseSystem(xml: string): ProjectClu[] {
   let doc: Record<string, unknown>;
   try {
     doc = SYSTEM_PARSER.parse(xml) as Record<string, unknown>;
-  } catch (e) {
-    console.warn('[ProjectRegistry] failed to parse system.xml:', e);
+  } catch (error) {
+    console.warn('[ProjectRegistry] failed to parse system.xml:', error);
     return clus;
   }
 
@@ -205,8 +205,8 @@ function parseSystem(xml: string): ProjectClu[] {
   const soList = (root['objectList'] ?? root['specificObjectList']) as Record<string, unknown> | undefined;
   if (!soList) return clus;
 
-  for (const so of toArray(soList['specificObject'])) {
-    const soObj = so as Record<string, unknown>;
+  for (const specificObject of toArray(soList['specificObject'])) {
+    const soObj = specificObject as Record<string, unknown>;
     if (soObj['class'] !== 'ProgrammablePeripheryCLU') continue;
 
     // CLU definition must be inline (not an XStream reference to another element)
@@ -264,18 +264,18 @@ function parseEmbeddedFeatures(devNode: Record<string, unknown>, idMap: Map<numb
   const featuresNode = resolveRef(devNode['features'] as Record<string, unknown> | undefined, idMap);
   if (!featuresNode) return [];
 
-  return toArray(featuresNode['EmbeddedFeature']).flatMap((ef) => {
-    const e = ef as Record<string, unknown>;
-    const name = str(e['name']);
-    const index = toNum(e['index']);
+  return toArray(featuresNode['EmbeddedFeature']).flatMap((featureEntry) => {
+    const featureNode = featureEntry as Record<string, unknown>;
+    const name = str(featureNode['name']);
+    const index = toNum(featureNode['index']);
     if (!name || isNaN(index)) return [];
-    const access = str(e['accessType']) ?? 'READ';
+    const access = str(featureNode['accessType']) ?? 'READ';
     return [{
       name,
       index,
       accessGet: access === 'READ' || access === 'ALL',
       accessSet: access === 'WRITE' || access === 'ALL',
-      type: str(e['paramType']) ?? 'NUMBER',
+      type: str(featureNode['paramType']) ?? 'NUMBER',
     }];
   });
 }
@@ -284,10 +284,10 @@ function parseEmbeddedEvents(devNode: Record<string, unknown>, idMap: Map<number
   const eventsNode = resolveRef(devNode['events'] as Record<string, unknown> | undefined, idMap);
   if (!eventsNode) return [];
 
-  return toArray(eventsNode['EmbeddedEvent']).flatMap((ee) => {
-    const e = ee as Record<string, unknown>;
-    const name = str(e['name']);
-    const index = toNum(e['index']);
+  return toArray(eventsNode['EmbeddedEvent']).flatMap((eventEntry) => {
+    const eventNode = eventEntry as Record<string, unknown>;
+    const name = str(eventNode['name']);
+    const index = toNum(eventNode['index']);
     if (!name || isNaN(index)) return [];
     return [{ name, index }];
   });
@@ -305,8 +305,8 @@ function collectIds(node: unknown, map: Map<number, Record<string, unknown>>): v
     return;
   }
   const obj = node as Record<string, unknown>;
-  const id = toNum(obj['id']);
-  if (!isNaN(id) && !map.has(id)) map.set(id, obj);
+  const objectId = toNum(obj['id']);
+  if (!isNaN(objectId) && !map.has(objectId)) map.set(objectId, obj);
   for (const val of Object.values(obj)) collectIds(val, map);
 }
 
@@ -317,31 +317,31 @@ function resolveRef(
 ): Record<string, unknown> | undefined {
   if (!node) return undefined;
   if (!('reference' in node)) return node;
-  const id = toNum(node['reference']);
-  return isNaN(id) ? node : idMap.get(id);
+  const referenceId = toNum(node['reference']);
+  return isNaN(referenceId) ? node : idMap.get(referenceId);
 }
 
 /** Get the first non-processing-instruction element from a parsed document. */
 function rootOf(doc: Record<string, unknown>): Record<string, unknown> {
-  const entry = Object.entries(doc).find(([k]) => !k.startsWith('?'));
+  const entry = Object.entries(doc).find(([key]) => !key.startsWith('?'));
   return (entry?.[1] ?? {}) as Record<string, unknown>;
 }
 
-function toArray(v: unknown): unknown[] {
-  if (!v) return [];
-  if (Array.isArray(v)) return v;
-  return [v];
+function toArray(value: unknown): unknown[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return [value];
 }
 
-function str(v: unknown): string | null {
-  if (v == null) return null;
-  if (typeof v === 'string') return v || null;
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+function str(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') return value || null;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return null;
 }
 
-function toNum(v: unknown): number {
-  if (typeof v === 'number') return v;
-  if (typeof v === 'string') return parseInt(v, 10);
+function toNum(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return parseInt(value, 10);
   return NaN;
 }

@@ -12,10 +12,10 @@ describe('CipherKey', () => {
     });
 
     it('always returns same values', () => {
-      const a = CipherKey.DEFAULT_BROADCAST;
-      const b = CipherKey.DEFAULT_BROADCAST;
-      assert.ok(a.getSecretKey().equals(b.getSecretKey()));
-      assert.ok(a.getIV().equals(b.getIV()));
+      const firstKey = CipherKey.DEFAULT_BROADCAST;
+      const secondKey = CipherKey.DEFAULT_BROADCAST;
+      assert.ok(firstKey.getSecretKey().equals(secondKey.getSecretKey()));
+      assert.ok(firstKey.getIV().equals(secondKey.getIV()));
     });
   });
 
@@ -31,9 +31,9 @@ describe('CipherKey', () => {
 
     it('encrypted is multiple of 16 (AES block size)', () => {
       const key = CipherKey.random();
-      for (const len of [1, 15, 16, 17, 30, 32, 100]) {
-        const enc = key.encrypt(Buffer.alloc(len, 0xAA));
-        assert.equal(enc.length % 16, 0, `enc.length=${enc.length} for input.length=${len}`);
+      for (const dataLength of [1, 15, 16, 17, 30, 32, 100]) {
+        const enc = key.encrypt(Buffer.alloc(dataLength, 0xAA));
+        assert.equal(enc.length % 16, 0, `enc.length=${enc.length} for input.length=${dataLength}`);
       }
     });
 
@@ -117,15 +117,15 @@ describe('CipherKey', () => {
   describe('generateDefaultKey', () => {
     it('uses hardcoded DEFAULT_IV', () => {
       const priv = Buffer.from([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-      const k1 = CipherKey.generateDefaultKey(priv);
-      assert.equal(k1.length, 16);
+      const firstDefaultKey = CipherKey.generateDefaultKey(priv);
+      assert.equal(firstDefaultKey.length, 16);
     });
 
     it('same privateKey always yields same key', () => {
       const priv = Buffer.alloc(8, 0x42);
-      const k1 = CipherKey.generateDefaultKey(priv);
-      const k2 = CipherKey.generateDefaultKey(priv);
-      assert.ok(k1.equals(k2));
+      const firstDefaultKey = CipherKey.generateDefaultKey(priv);
+      const secondDefaultKey = CipherKey.generateDefaultKey(priv);
+      assert.ok(firstDefaultKey.equals(secondDefaultKey));
     });
   });
 
@@ -133,20 +133,20 @@ describe('CipherKey', () => {
     it('returns CipherKey with derived key and given IV', () => {
       const iv = Buffer.alloc(16, 0xAB);
       const priv = Buffer.alloc(8, 0xCD);
-      const ck = CipherKey.getInitialCipherKey(iv, priv);
-      assert.ok(ck instanceof CipherKey);
-      assert.ok(ck.getIV().equals(iv));
+      const cipherKey = CipherKey.getInitialCipherKey(iv, priv);
+      assert.ok(cipherKey instanceof CipherKey);
+      assert.ok(cipherKey.getIV().equals(iv));
       // key is derived from generateDefaultKey(priv)
       const expectedKey = CipherKey.generateDefaultKey(priv);
-      assert.ok(ck.getSecretKey().equals(expectedKey));
+      assert.ok(cipherKey.getSecretKey().equals(expectedKey));
     });
   });
 
   describe('random()', () => {
     it('produces different keys each time', () => {
-      const k1 = CipherKey.random();
-      const k2 = CipherKey.random();
-      assert.ok(!k1.getSecretKey().equals(k2.getSecretKey()) || !k1.getIV().equals(k2.getIV()));
+      const firstDefaultKey = CipherKey.random();
+      const secondDefaultKey = CipherKey.random();
+      assert.ok(!firstDefaultKey.getSecretKey().equals(secondDefaultKey.getSecretKey()) || !firstDefaultKey.getIV().equals(secondDefaultKey.getIV()));
     });
   });
 });

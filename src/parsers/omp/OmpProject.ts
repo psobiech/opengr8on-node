@@ -158,209 +158,6 @@ export interface OmpProject {
   network: { gateway?: string; netmask?: string };
 }
 
-const toArray = (v: unknown): XmlNode[] => (v == null ? [] : Array.isArray(v) ? (v as XmlNode[]) : [v as XmlNode]);
-
-function text(node: unknown): string | undefined {
-  if (node == null) return undefined;
-  if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') return String(node);
-  if (typeof node === 'object' && '#text' in (node as XmlNode)) return String((node as XmlNode)['#text']);
-  if (typeof node === 'object') return '';
-  return undefined;
-}
-
-class Refs {
-  private readonly byId = new Map<string, XmlNode>();
-  constructor(root: unknown) {
-    this.index(root);
-  }
-  private index(node: unknown): void {
-    if (!node || typeof node !== 'object') return;
-    if (Array.isArray(node)) {
-      for (const n of node) this.index(n);
-      return;
-    }
-    const obj = node as XmlNode;
-    if (obj['@_id'] != null) this.byId.set(String(obj['@_id']), obj);
-    for (const v of Object.values(obj)) this.index(v);
-  }
-  resolve(node: unknown): XmlNode | undefined {
-    if (!node || typeof node !== 'object') return undefined;
-    const obj = node as XmlNode;
-    return obj['@_reference'] != null ? this.byId.get(String(obj['@_reference'])) : obj;
-  }
-}
-
-function features(list: unknown, refs: Refs): OmpFeature[] {
-  const holder = refs.resolve(list);
-  return toArray(holder?.['EmbeddedFeature'])
-    .map(f => refs.resolve(f))
-    .filter((f): f is XmlNode => !!f)
-    .map(f => {
-      const type = refs.resolve(f['type']);
-      return {
-        name: text(f['name']) ?? '',
-        index: Number(text(f['index']) ?? NaN),
-        initValue: text(f['initValue']),
-        defaultInitValue: text(f['defaultInitValue']),
-        paramType: text(type?.['paramType']),
-        accessType: text(f['accessType']),
-      };
-    });
-}
-
-function events(list: unknown, refs: Refs): OmpEvent[] {
-  const holder = refs.resolve(list);
-  return toArray(holder?.['Event'])
-    .map(e => refs.resolve(e))
-    .filter((e): e is XmlNode => !!e)
-    .map(e => ({
-      name: text(e['name']) ?? '',
-      index: Number(text(e['index']) ?? NaN),
-      commands: toArray(refs.resolve(e['commands'])?.['string']).map(s => text(s) ?? ''),
-    }));
-}
-
-function moduleOf(node: unknown, refs: Refs): OmpModule | undefined {
-  const m = refs.resolve(node);
-  if (!m) return undefined;
-  return {
-    moduleID: text(m['moduleID']) ?? '',
-    moduleClass: text(m['moduleClass']),
-    moduleInterface: text(m['moduleInterface']),
-    moduleTypeFirmware: text(m['moduleTypeFirmware']),
-    moduleVersion: text(m['moduleVersion']),
-    innerName: text(m['innerName']),
-    active: text(m['active']),
-  };
-}
-
-function ios(list: unknown, refs: Refs): OmpIo[] {
-  const holder = refs.resolve(list);
-  if (!holder) return [];
-  const out: OmpIo[] = [];
-  // keep document order across Input/Output siblings: walk the raw keys in order of appearance
-  const items: Array<{ kind: 'Input' | 'Output'; node: XmlNode; order: number }> = [];
-  for (const kind of ['Input', 'Output'] as const) {
-    for (const n of toArray(holder[kind])) {
-      const r = refs.resolve(n);
-      if (r) items.push({ kind, node: r, order: Number(r['@_id'] ?? NaN) });
-    }
-  }
-  items.sort((a, b) => a.order - b.order); // XStream ids follow document order
-  for (const { kind, node } of items) {
-    out.push({
-      kind,
-      name: text(node['name']) ?? '',
-      nameOnCLU: text(node['nameOnCLU']) ?? '',
-      type: text(node['type']),
-      number: text(node['number']),
-      classTypeId: text(node['classTypeId']),
-      active: text(node['active']),
-      isRemoved: text(node['isRemoved']),
-      tfBusOrder: text(node['tfBusOrder']),
-      module: moduleOf(node['module'], refs),
-      features: features(node['features'], refs),
-      events: events(node['events'], refs),
-    });
-  }
-  return out;
-}
-
-function periphery(list: unknown, refs: Refs): OmpPeriphery[] {
-  const holder = refs.resolve(list);
-  if (!holder) return [];
-  const nodes: XmlNode[] = [];
-  for (const [key, v] of Object.entries(holder)) {
-    if (key.startsWith('@_') || key === '#text') continue;
-    for (const n of toArray(v)) {
-      const r = refs.resolve(n);
-      if (r) nodes.push(r);
-    }
-  }
-  nodes.sort((a, b) => Number(a['@_id'] ?? NaN) - Number(b['@_id'] ?? NaN)); // document order
-  return nodes.map(p => ({
-    name: text(p['name']) ?? '',
-    nameOnCLU: text(p['nameOnCLU']) ?? '',
-    typeName: text(p['typeName']),
-    typeId: text(p['typeId']),
-    typeVersion: text(p['typeVersion']),
-    isRemoved: text(p['isRemoved']),
-    existsOnCLU: text(p['existsOnCLU']),
-    features: features(p['features'], refs),
-    events: events(p['events'], refs),
-  }));
-}
-
-function scriptParameters(list: unknown, refs: Refs): OmpScriptParameter[] {
-  const holder = refs.resolve(list);
-  return toArray(holder?.['ScriptParameter'])
-    .map(p => refs.resolve(p))
-    .filter((p): p is XmlNode => !!p)
-    .map(p => {
-      const type = refs.resolve(p['extendParamType']);
-      return {
-        name: text(p['name']) ?? '',
-        defaultValue: text(p['defaultValue']),
-        value: text(p['value']),
-        paramType: text(type?.['paramType']),
-        restrictionType: text(type?.['restrictionType']),
-        restrictionValues: toArray(refs.resolve(type?.['restrictionValues'])?.['string']).map(v => text(v) ?? ''),
-        optional: text(p['optional']),
-      };
-    });
-}
-
-function userFeatures(list: unknown, refs: Refs): OmpUserFeature[] {
-  return toArray(refs.resolve(list)?.['DefinedFeature'])
-    .map(f => refs.resolve(f))
-    .filter((f): f is XmlNode => !!f)
-    .map(f => ({
-      name: text(f['name']) ?? '',
-      paramType: text(refs.resolve(f['type'])?.['paramType']),
-      defaultValue: text(f['defaultValue']),
-      persist: text(f['persist']),
-    }));
-}
-
-function scripts(list: unknown, refs: Refs, cluName: string, zip: AdmZip): OmpScript[] {
-  const holder = refs.resolve(list);
-  return toArray(holder?.['Script'])
-    .map(s => refs.resolve(s))
-    .filter((s): s is XmlNode => !!s)
-    .map(s => {
-      const name = text(s['name']) ?? '';
-      const entry = zip.getEntry(`scripts/${cluName}/${name}.lua`);
-      return {
-        name,
-        parameters: scriptParameters(s['parameters'], refs),
-        isManualEdit: text(s['isManualEdit']),
-        source: entry ? entry.getData().toString('utf8') : undefined,
-      };
-    });
-}
-
-/**
- * CLU nodes anywhere in the document: XStream defines an object where it first occurs, which for
- * CLUs is often inside an IO's <clu> element rather than in the project tree. A CLU is any node
- * with serialNumber + iosList; references resolve to the same node, so identity dedupes.
- */
-function collectClus(node: unknown, refs: Refs, out: Map<XmlNode, true>): void {
-  if (!node || typeof node !== 'object') return;
-  if (Array.isArray(node)) {
-    for (const n of node) collectClus(n, refs, out);
-    return;
-  }
-  const obj = refs.resolve(node);
-  if (!obj) return;
-  if (obj !== node) return; // a reference: the definition is visited where it occurs
-  if ('serialNumber' in obj && 'iosList' in obj) out.set(obj, true);
-  for (const v of Object.values(obj)) if (v && typeof v === 'object') collectClus(v, refs, out);
-}
-
-function zipOf(source: string | Buffer): AdmZip {
-  return new AdmZip(source);
-}
-
 /** Reads the CLUs of an .omp (path or archive bytes). */
 export function readOmpProject(source: string | Buffer): OmpProject {
   const zip = zipOf(source);
@@ -373,27 +170,27 @@ export function readOmpProject(source: string | Buffer): OmpProject {
   const found = new Map<XmlNode, true>();
   collectClus(root, refs, found);
 
-  const clus: OmpClu[] = [...found.keys()].map(c => {
-    const name = text(c['name']) ?? '';
+  const clus: OmpClu[] = [...found.keys()].map(cluNode => {
+    const name = text(cluNode['name']) ?? '';
     return {
       name,
-      nameOnCLU: text(c['nameOnCLU']) ?? '',
-      serialNumber: text(c['serialNumber']) ?? '',
-      macAddress: text(c['macAddress']),
-      ipAddress: text(c['ipAddress']) ?? '',
-      hardwareType: text(c['hardwareType']),
-      hardwareVersion: text(c['hardwareVersion']),
-      firmwareType: text(c['firmwareType']),
-      firmwareVersion: text(c['firmwareVersion']),
-      cipherKeyType: text(c['cipherKeyType']),
-      isRemoved: text(c['isRemoved']),
-      features: features(c['embeddedFeaturesList'], refs),
-      events: events(c['eventsList'], refs),
-      modules: toArray(refs.resolve(c['modulesList'])?.['InputOutputDefinition']).map(m => moduleOf(m, refs)).filter((m): m is OmpModule => !!m),
-      ios: ios(c['iosList'], refs),
-      periphery: periphery(c['peripheryList'], refs),
-      userFeatures: userFeatures(c['definedFeaturesList'], refs),
-      scripts: scripts(c['scripts'], refs, name, zip),
+      nameOnCLU: text(cluNode['nameOnCLU']) ?? '',
+      serialNumber: text(cluNode['serialNumber']) ?? '',
+      macAddress: text(cluNode['macAddress']),
+      ipAddress: text(cluNode['ipAddress']) ?? '',
+      hardwareType: text(cluNode['hardwareType']),
+      hardwareVersion: text(cluNode['hardwareVersion']),
+      firmwareType: text(cluNode['firmwareType']),
+      firmwareVersion: text(cluNode['firmwareVersion']),
+      cipherKeyType: text(cluNode['cipherKeyType']),
+      isRemoved: text(cluNode['isRemoved']),
+      features: features(cluNode['embeddedFeaturesList'], refs),
+      events: events(cluNode['eventsList'], refs),
+      modules: toArray(refs.resolve(cluNode['modulesList'])?.['InputOutputDefinition']).map(moduleNode => moduleOf(moduleNode, refs)).filter((module): module is OmpModule => !!module),
+      ios: ios(cluNode['iosList'], refs),
+      periphery: periphery(cluNode['peripheryList'], refs),
+      userFeatures: userFeatures(cluNode['definedFeaturesList'], refs),
+      scripts: scripts(cluNode['scripts'], refs, name, zip),
     };
   });
 
@@ -411,18 +208,223 @@ export function readOmpProject(source: string | Buffer): OmpProject {
 export function readOmpDiagnostics(source: string | Buffer): Map<string, Map<string, Buffer>> {
   const zip = zipOf(source);
   const latest = new Map<string, { name: string; data: () => Buffer }>();
-  for (const e of zip.getEntries()) {
-    const m = /^diagnostics\/([^/]+)\/([^/]+)\/(.+)$/.exec(e.entryName);
-    if (!m || e.isDirectory) continue;
-    const key = `${m[1]}/${m[2].toLowerCase()}`;
-    const prev = latest.get(key);
-    if (!prev || prev.name.localeCompare(e.entryName) < 0) latest.set(key, { name: e.entryName, data: () => e.getData() });
+  for (const zipEntry of zip.getEntries()) {
+    const match = /^diagnostics\/([^/]+)\/([^/]+)\/(.+)$/.exec(zipEntry.entryName);
+    if (!match || zipEntry.isDirectory) continue;
+    const key = `${match[1]}/${match[2].toLowerCase()}`;
+    const previous = latest.get(key);
+    if (!previous || previous.name.localeCompare(zipEntry.entryName) < 0) latest.set(key, { name: zipEntry.entryName, data: () => zipEntry.getData() });
   }
-  const out = new Map<string, Map<string, Buffer>>();
-  for (const [key, v] of latest) {
+  const result = new Map<string, Map<string, Buffer>>();
+  for (const [key, latestEntry] of latest) {
     const [serial, file] = key.split('/');
-    if (!out.has(serial)) out.set(serial, new Map());
-    out.get(serial)!.set(file, v.data());
+    if (!result.has(serial)) result.set(serial, new Map());
+    result.get(serial)!.set(file, latestEntry.data());
   }
-  return out;
+  return result;
+}
+
+function zipOf(source: string | Buffer): AdmZip {
+  return new AdmZip(source);
+}
+
+class Refs {
+  private readonly byId = new Map<string, XmlNode>();
+  constructor(root: unknown) {
+    this.index(root);
+  }
+  private index(node: unknown): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const child of node) this.index(child);
+      return;
+    }
+    const objectNode = node as XmlNode;
+    if (objectNode['@_id'] != null) this.byId.set(String(objectNode['@_id']), objectNode);
+    for (const value of Object.values(objectNode)) this.index(value);
+  }
+  resolve(node: unknown): XmlNode | undefined {
+    if (!node || typeof node !== 'object') return undefined;
+    const objectNode = node as XmlNode;
+    return objectNode['@_reference'] != null ? this.byId.get(String(objectNode['@_reference'])) : objectNode;
+  }
+}
+
+/**
+ * CLU nodes anywhere in the document: XStream defines an object where it first occurs, which for
+ * CLUs is often inside an IO's <clu> element rather than in the project tree. A CLU is any node
+ * with serialNumber + iosList; references resolve to the same node, so identity dedupes.
+ */
+function collectClus(node: unknown, refs: Refs, out: Map<XmlNode, true>): void {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const child of node) collectClus(child, refs, out);
+    return;
+  }
+  const objectNode = refs.resolve(node);
+  if (!objectNode) return;
+  if (objectNode !== node) return; // a reference: the definition is visited where it occurs
+  if ('serialNumber' in objectNode && 'iosList' in objectNode) out.set(objectNode, true);
+  for (const value of Object.values(objectNode)) if (value && typeof value === 'object') collectClus(value, refs, out);
+}
+
+function features(list: unknown, refs: Refs): OmpFeature[] {
+  const holder = refs.resolve(list);
+  return toArray(holder?.['EmbeddedFeature'])
+    .map(featureNode => refs.resolve(featureNode))
+    .filter((featureNode): featureNode is XmlNode => !!featureNode)
+    .map(featureNode => {
+      const type = refs.resolve(featureNode['type']);
+      return {
+        name: text(featureNode['name']) ?? '',
+        index: Number(text(featureNode['index']) ?? NaN),
+        initValue: text(featureNode['initValue']),
+        defaultInitValue: text(featureNode['defaultInitValue']),
+        paramType: text(type?.['paramType']),
+        accessType: text(featureNode['accessType']),
+      };
+    });
+}
+
+function events(list: unknown, refs: Refs): OmpEvent[] {
+  const holder = refs.resolve(list);
+  return toArray(holder?.['Event'])
+    .map(eventNode => refs.resolve(eventNode))
+    .filter((eventNode): eventNode is XmlNode => !!eventNode)
+    .map(eventNode => ({
+      name: text(eventNode['name']) ?? '',
+      index: Number(text(eventNode['index']) ?? NaN),
+      commands: toArray(refs.resolve(eventNode['commands'])?.['string']).map(commandNode => text(commandNode) ?? ''),
+    }));
+}
+
+function moduleOf(node: unknown, refs: Refs): OmpModule | undefined {
+  const moduleNode = refs.resolve(node);
+  if (!moduleNode) return undefined;
+  return {
+    moduleID: text(moduleNode['moduleID']) ?? '',
+    moduleClass: text(moduleNode['moduleClass']),
+    moduleInterface: text(moduleNode['moduleInterface']),
+    moduleTypeFirmware: text(moduleNode['moduleTypeFirmware']),
+    moduleVersion: text(moduleNode['moduleVersion']),
+    innerName: text(moduleNode['innerName']),
+    active: text(moduleNode['active']),
+  };
+}
+
+function ios(list: unknown, refs: Refs): OmpIo[] {
+  const holder = refs.resolve(list);
+  if (!holder) return [];
+  const result: OmpIo[] = [];
+  // keep document order across Input/Output siblings: walk the raw keys in order of appearance
+  const items: Array<{ kind: 'Input' | 'Output'; node: XmlNode; order: number }> = [];
+  for (const kind of ['Input', 'Output'] as const) {
+    for (const ioNode of toArray(holder[kind])) {
+      const resolved = refs.resolve(ioNode);
+      if (resolved) items.push({ kind, node: resolved, order: Number(resolved['@_id'] ?? NaN) });
+    }
+  }
+  items.sort((left, right) => left.order - right.order); // XStream ids follow document order
+  for (const { kind, node } of items) {
+    result.push({
+      kind,
+      name: text(node['name']) ?? '',
+      nameOnCLU: text(node['nameOnCLU']) ?? '',
+      type: text(node['type']),
+      number: text(node['number']),
+      classTypeId: text(node['classTypeId']),
+      active: text(node['active']),
+      isRemoved: text(node['isRemoved']),
+      tfBusOrder: text(node['tfBusOrder']),
+      module: moduleOf(node['module'], refs),
+      features: features(node['features'], refs),
+      events: events(node['events'], refs),
+    });
+  }
+  return result;
+}
+
+function periphery(list: unknown, refs: Refs): OmpPeriphery[] {
+  const holder = refs.resolve(list);
+  if (!holder) return [];
+  const nodes: XmlNode[] = [];
+  for (const [key, value] of Object.entries(holder)) {
+    if (key.startsWith('@_') || key === '#text') continue;
+    for (const peripheryNode of toArray(value)) {
+      const resolved = refs.resolve(peripheryNode);
+      if (resolved) nodes.push(resolved);
+    }
+  }
+  nodes.sort((left, right) => Number(left['@_id'] ?? NaN) - Number(right['@_id'] ?? NaN)); // document order
+  return nodes.map(peripheryNode => ({
+    name: text(peripheryNode['name']) ?? '',
+    nameOnCLU: text(peripheryNode['nameOnCLU']) ?? '',
+    typeName: text(peripheryNode['typeName']),
+    typeId: text(peripheryNode['typeId']),
+    typeVersion: text(peripheryNode['typeVersion']),
+    isRemoved: text(peripheryNode['isRemoved']),
+    existsOnCLU: text(peripheryNode['existsOnCLU']),
+    features: features(peripheryNode['features'], refs),
+    events: events(peripheryNode['events'], refs),
+  }));
+}
+
+function userFeatures(list: unknown, refs: Refs): OmpUserFeature[] {
+  return toArray(refs.resolve(list)?.['DefinedFeature'])
+    .map(featureNode => refs.resolve(featureNode))
+    .filter((featureNode): featureNode is XmlNode => !!featureNode)
+    .map(featureNode => ({
+      name: text(featureNode['name']) ?? '',
+      paramType: text(refs.resolve(featureNode['type'])?.['paramType']),
+      defaultValue: text(featureNode['defaultValue']),
+      persist: text(featureNode['persist']),
+    }));
+}
+
+function scripts(list: unknown, refs: Refs, cluName: string, zip: AdmZip): OmpScript[] {
+  const holder = refs.resolve(list);
+  return toArray(holder?.['Script'])
+    .map(scriptNode => refs.resolve(scriptNode))
+    .filter((scriptNode): scriptNode is XmlNode => !!scriptNode)
+    .map(scriptNode => {
+      const name = text(scriptNode['name']) ?? '';
+      const entry = zip.getEntry(`scripts/${cluName}/${name}.lua`);
+      return {
+        name,
+        parameters: scriptParameters(scriptNode['parameters'], refs),
+        isManualEdit: text(scriptNode['isManualEdit']),
+        source: entry ? entry.getData().toString('utf8') : undefined,
+      };
+    });
+}
+
+function scriptParameters(list: unknown, refs: Refs): OmpScriptParameter[] {
+  const holder = refs.resolve(list);
+  return toArray(holder?.['ScriptParameter'])
+    .map(parameterNode => refs.resolve(parameterNode))
+    .filter((parameterNode): parameterNode is XmlNode => !!parameterNode)
+    .map(parameterNode => {
+      const type = refs.resolve(parameterNode['extendParamType']);
+      return {
+        name: text(parameterNode['name']) ?? '',
+        defaultValue: text(parameterNode['defaultValue']),
+        value: text(parameterNode['value']),
+        paramType: text(type?.['paramType']),
+        restrictionType: text(type?.['restrictionType']),
+        restrictionValues: toArray(refs.resolve(type?.['restrictionValues'])?.['string']).map(restrictionNode => text(restrictionNode) ?? ''),
+        optional: text(parameterNode['optional']),
+      };
+    });
+}
+
+function text(node: unknown): string | undefined {
+  if (node == null) return undefined;
+  if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') return String(node);
+  if (typeof node === 'object' && '#text' in (node as XmlNode)) return String((node as XmlNode)['#text']);
+  if (typeof node === 'object') return '';
+  return undefined;
+}
+
+function toArray(value: unknown): XmlNode[] {
+  return value == null ? [] : Array.isArray(value) ? (value as XmlNode[]) : [value as XmlNode];
 }

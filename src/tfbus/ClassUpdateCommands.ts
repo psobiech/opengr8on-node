@@ -17,24 +17,24 @@ export function thermostatFrame(dest: number, value: number): Buffer {
 }
 
 export function panelPageFrame(dest: number, channel: number, value32: number): Buffer {
-  const b = Buffer.allocUnsafe(5);
-  b[0] = (1 << channel) & 0xFF;
-  b.writeUInt32LE(value32 >>> 0, 1);
-  return buildFrame(dest, 0x13, b);
+  const payload = Buffer.allocUnsafe(5);
+  payload[0] = (1 << channel) & 0xFF;
+  payload.writeUInt32LE(value32 >>> 0, 1);
+  return buildFrame(dest, 0x13, payload);
 }
 
 export function panelSensTempFrame(dest: number, channel: number, value16: number): Buffer {
-  const b = Buffer.allocUnsafe(3);
-  b[0] = (1 << channel) & 0xFF;
-  b.writeUInt16LE(value16 & 0xFFFF, 1);
-  return buildFrame(dest, 0x14, b);
+  const payload = Buffer.allocUnsafe(3);
+  payload[0] = (1 << channel) & 0xFF;
+  payload.writeUInt16LE(value16 & 0xFFFF, 1);
+  return buildFrame(dest, 0x14, payload);
 }
 
 export function panelSensLightFrame(dest: number, channel: number, value16: number): Buffer {
-  const b = Buffer.allocUnsafe(3);
-  b[0] = (1 << channel) & 0xFF;
-  b.writeUInt16LE(value16 & 0xFFFF, 1);
-  return buildFrame(dest, 0x15, b);
+  const payload = Buffer.allocUnsafe(3);
+  payload[0] = (1 << channel) & 0xFF;
+  payload.writeUInt16LE(value16 & 0xFFFF, 1);
+  return buildFrame(dest, 0x15, payload);
 }
 
 export function humiditySensorFrame(dest: number, chan: number, value24: number): Buffer {

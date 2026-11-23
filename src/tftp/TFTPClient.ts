@@ -36,95 +36,6 @@ type ErrorPacket = { opcode: typeof OP_ERROR; code: number; message: string };
 type UnknownPacket = { opcode: number };
 type TFTPPacket = DataPacket | AckPacket | ErrorPacket | UnknownPacket;
 
-function isErrorPacket(p: TFTPPacket): p is ErrorPacket { return p.opcode === OP_ERROR; }
-function isAckPacket(p: TFTPPacket): p is AckPacket { return p.opcode === OP_ACK; }
-function isDataPacket(p: TFTPPacket): p is DataPacket { return p.opcode === OP_DATA; }
-
-function buildRRQ(filename: string): Buffer {
-  const filenameBuf = Buffer.from(filename + '\0', 'utf8');
-  const modeBuf = Buffer.from('octet\0', 'utf8');
-  const buf = Buffer.alloc(2 + filenameBuf.length + modeBuf.length);
-  buf.writeUInt16BE(OP_RRQ, 0);
-  filenameBuf.copy(buf, 2);
-  modeBuf.copy(buf, 2 + filenameBuf.length);
-  return buf;
-}
-
-function buildWRQ(filename: string): Buffer {
-  const filenameBuf = Buffer.from(filename + '\0', 'utf8');
-  const modeBuf = Buffer.from('octet\0', 'utf8');
-  const buf = Buffer.alloc(2 + filenameBuf.length + modeBuf.length);
-  buf.writeUInt16BE(OP_WRQ, 0);
-  filenameBuf.copy(buf, 2);
-  modeBuf.copy(buf, 2 + filenameBuf.length);
-  return buf;
-}
-
-function buildACK(block: number): Buffer {
-  const buf = Buffer.alloc(4);
-  buf.writeUInt16BE(OP_ACK, 0);
-  buf.writeUInt16BE(block, 2);
-  return buf;
-}
-
-function buildDATA(block: number, data: Buffer): Buffer {
-  const buf = Buffer.alloc(4 + data.length);
-  buf.writeUInt16BE(OP_DATA, 0);
-  buf.writeUInt16BE(block, 2);
-  data.copy(buf, 4);
-  return buf;
-}
-
-function parsePacket(buf: Buffer): TFTPPacket {
-  const opcode = buf.readUInt16BE(0);
-  if (opcode === OP_DATA) {
-    return { opcode, block: buf.readUInt16BE(2), data: buf.subarray(4) };
-  }
-  if (opcode === OP_ACK) {
-    return { opcode, block: buf.readUInt16BE(2) };
-  }
-  if (opcode === OP_ERROR) {
-    const code = buf.readUInt16BE(2);
-    const message = buf.subarray(4).toString('utf8').replace(/\0.*/, '');
-    return { opcode, code, message };
-  }
-  return { opcode };
-}
-
-function createSocket(localAddress: string): Promise<dgram.Socket> {
-  return new Promise((resolve, reject) => {
-    const sock = dgram.createSocket({ type: 'udp4' });
-    sock.on('error', reject);
-    sock.bind({ address: localAddress }, () => {
-      sock.removeListener('error', reject);
-      resolve(sock);
-    });
-  });
-}
-
-function sendPacket(sock: dgram.Socket, buf: Buffer, address: string, port: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    sock.send(buf, port, address, err => err ? reject(err) : resolve());
-  });
-}
-
-function receivePacket(sock: dgram.Socket, timeoutMs = TFTP_TIMEOUT_MS): Promise<{ buf: Buffer; address: string; port: number }> {
-  return new Promise((resolve, reject) => {
-    let done = false;
-    const timeout = setTimeout(() => {
-      if (!done) { done = true; reject(new Error('TFTP timeout')); }
-    }, timeoutMs);
-
-    sock.once('message', (msg: Buffer, rinfo: dgram.RemoteInfo) => {
-      if (!done) {
-        done = true;
-        clearTimeout(timeout);
-        resolve({ buf: msg, address: rinfo.address, port: rinfo.port });
-      }
-    });
-  });
-}
-
 export class TFTPClient {
   readonly localAddress: string;
 
@@ -134,68 +45,157 @@ export class TFTPClient {
 
   async upload(deviceAddress: string, localPath: string, remoteFilename: string): Promise<void> {
     const data = fs.readFileSync(localPath);
-    const sock = await createSocket(this.localAddress);
+    const socket = await createSocket(this.localAddress);
     try {
-      await sendPacket(sock, buildWRQ(remoteFilename), deviceAddress, TFTP_PORT);
+      await sendPacket(socket, buildWRQ(remoteFilename), deviceAddress, TFTP_PORT);
 
-      const { buf, address: serverAddr, port: serverPort } = await receivePacket(sock);
-      let pkt = parsePacket(buf);
-      if (isErrorPacket(pkt)) throw new TFTPError(pkt.code, pkt.message);
-      if (!isAckPacket(pkt)) throw new Error(`TFTP: expected ACK(0), got opcode=${pkt.opcode}`);
-      if (pkt.block !== 0) throw new Error(`TFTP: expected ACK(0), got block=${pkt.block}`);
+      const { datagram, address: serverAddr, port: serverPort } = await receivePacket(socket);
+      let packet = parsePacket(datagram);
+      if (isErrorPacket(packet)) throw new TFTPError(packet.code, packet.message);
+      if (!isAckPacket(packet)) throw new Error(`TFTP: expected ACK(0), got opcode=${packet.opcode}`);
+      if (packet.block !== 0) throw new Error(`TFTP: expected ACK(0), got block=${packet.block}`);
 
       let block = 1;
       let offset = 0;
       while (true) {
         const chunk = data.subarray(offset, offset + BLOCK_SIZE);
-        await sendPacket(sock, buildDATA(block, chunk), serverAddr, serverPort);
+        await sendPacket(socket, buildDATA(block, chunk), serverAddr, serverPort);
 
-        const resp = await receivePacket(sock);
-        pkt = parsePacket(resp.buf);
-        if (isErrorPacket(pkt)) throw new TFTPError(pkt.code, pkt.message);
-        if (!isAckPacket(pkt)) throw new Error(`TFTP: expected ACK(${block})`);
-        if (pkt.block !== block) throw new Error(`TFTP: expected ACK(${block})`);
+        const response = await receivePacket(socket);
+        packet = parsePacket(response.datagram);
+        if (isErrorPacket(packet)) throw new TFTPError(packet.code, packet.message);
+        if (!isAckPacket(packet)) throw new Error(`TFTP: expected ACK(${block})`);
+        if (packet.block !== block) throw new Error(`TFTP: expected ACK(${block})`);
 
         offset += chunk.length;
         if (chunk.length < BLOCK_SIZE) break;
         block = (block + 1) & 0xFFFF;
       }
     } finally {
-      sock.close();
+      socket.close();
     }
   }
 
   async download(deviceAddress: string, remoteFilename: string, localPath: string): Promise<void> {
-    const sock = await createSocket(this.localAddress);
+    const socket = await createSocket(this.localAddress);
     const chunks: Buffer[] = [];
     try {
-      await sendPacket(sock, buildRRQ(remoteFilename), deviceAddress, TFTP_PORT);
+      await sendPacket(socket, buildRRQ(remoteFilename), deviceAddress, TFTP_PORT);
 
       let serverAddr = '';
       let serverPort = 0;
       let expectedBlock = 1;
 
       while (true) {
-        const { buf, address, port } = await receivePacket(sock);
-        const pkt = parsePacket(buf);
+        const { datagram, address, port } = await receivePacket(socket);
+        const packet = parsePacket(datagram);
 
-        if (isErrorPacket(pkt)) throw new TFTPError(pkt.code, pkt.message);
-        if (!isDataPacket(pkt)) throw new Error(`TFTP: expected DATA, got opcode=${pkt.opcode}`);
-        if (pkt.block !== expectedBlock) continue;
+        if (isErrorPacket(packet)) throw new TFTPError(packet.code, packet.message);
+        if (!isDataPacket(packet)) throw new Error(`TFTP: expected DATA, got opcode=${packet.opcode}`);
+        if (packet.block !== expectedBlock) continue;
 
         serverAddr = address;
         serverPort = port;
 
-        chunks.push(Buffer.from(pkt.data));
-        await sendPacket(sock, buildACK(pkt.block), serverAddr, serverPort);
+        chunks.push(Buffer.from(packet.data));
+        await sendPacket(socket, buildACK(packet.block), serverAddr, serverPort);
 
-        if (pkt.data.length < BLOCK_SIZE) break;
+        if (packet.data.length < BLOCK_SIZE) break;
         expectedBlock = (expectedBlock + 1) & 0xFFFF;
       }
     } finally {
-      sock.close();
+      socket.close();
     }
 
     fs.writeFileSync(localPath, Buffer.concat(chunks));
   }
+}
+
+function createSocket(localAddress: string): Promise<dgram.Socket> {
+  return new Promise((resolve, reject) => {
+    const socket = dgram.createSocket({ type: 'udp4' });
+    socket.on('error', reject);
+    socket.bind({ address: localAddress }, () => {
+      socket.removeListener('error', reject);
+      resolve(socket);
+    });
+  });
+}
+
+function sendPacket(socket: dgram.Socket, packetBuffer: Buffer, address: string, port: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    socket.send(packetBuffer, port, address, sendError => sendError ? reject(sendError) : resolve());
+  });
+}
+
+function receivePacket(socket: dgram.Socket, timeoutMs = TFTP_TIMEOUT_MS): Promise<{ datagram: Buffer; address: string; port: number }> {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const timeout = setTimeout(() => {
+      if (!done) { done = true; reject(new Error('TFTP timeout')); }
+    }, timeoutMs);
+
+    socket.once('message', (message: Buffer, remoteInfo: dgram.RemoteInfo) => {
+      if (!done) {
+        done = true;
+        clearTimeout(timeout);
+        resolve({ datagram: message, address: remoteInfo.address, port: remoteInfo.port });
+      }
+    });
+  });
+}
+
+function parsePacket(datagram: Buffer): TFTPPacket {
+  const opcode = datagram.readUInt16BE(0);
+  if (opcode === OP_DATA) {
+    return { opcode, block: datagram.readUInt16BE(2), data: datagram.subarray(4) };
+  }
+  if (opcode === OP_ACK) {
+    return { opcode, block: datagram.readUInt16BE(2) };
+  }
+  if (opcode === OP_ERROR) {
+    const code = datagram.readUInt16BE(2);
+    const message = datagram.subarray(4).toString('utf8').replace(/\0.*/, '');
+    return { opcode, code, message };
+  }
+  return { opcode };
+}
+
+function isErrorPacket(packet: TFTPPacket): packet is ErrorPacket { return packet.opcode === OP_ERROR; }
+function isAckPacket(packet: TFTPPacket): packet is AckPacket { return packet.opcode === OP_ACK; }
+function isDataPacket(packet: TFTPPacket): packet is DataPacket { return packet.opcode === OP_DATA; }
+
+function buildWRQ(filename: string): Buffer {
+  const filenameBytes = Buffer.from(filename + '\0', 'utf8');
+  const modeBytes = Buffer.from('octet\0', 'utf8');
+  const packetBuffer = Buffer.alloc(2 + filenameBytes.length + modeBytes.length);
+  packetBuffer.writeUInt16BE(OP_WRQ, 0);
+  filenameBytes.copy(packetBuffer, 2);
+  modeBytes.copy(packetBuffer, 2 + filenameBytes.length);
+  return packetBuffer;
+}
+
+function buildDATA(block: number, data: Buffer): Buffer {
+  const packetBuffer = Buffer.alloc(4 + data.length);
+  packetBuffer.writeUInt16BE(OP_DATA, 0);
+  packetBuffer.writeUInt16BE(block, 2);
+  data.copy(packetBuffer, 4);
+  return packetBuffer;
+}
+
+function buildRRQ(filename: string): Buffer {
+  const filenameBytes = Buffer.from(filename + '\0', 'utf8');
+  const modeBytes = Buffer.from('octet\0', 'utf8');
+  const packetBuffer = Buffer.alloc(2 + filenameBytes.length + modeBytes.length);
+  packetBuffer.writeUInt16BE(OP_RRQ, 0);
+  filenameBytes.copy(packetBuffer, 2);
+  modeBytes.copy(packetBuffer, 2 + filenameBytes.length);
+  return packetBuffer;
+}
+
+function buildACK(block: number): Buffer {
+  const packetBuffer = Buffer.alloc(4);
+  packetBuffer.writeUInt16BE(OP_ACK, 0);
+  packetBuffer.writeUInt16BE(block, 2);
+  return packetBuffer;
 }

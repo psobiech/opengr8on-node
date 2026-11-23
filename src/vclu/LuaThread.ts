@@ -79,12 +79,12 @@ export class LuaThread {
         (handlers[msg.type] as (msg: WorkerMessage) => void)(msg),
       );
 
-      this._worker.on('error', (e: Error) => settle(e));
+      this._worker.on('error', (error: Error) => settle(error));
     });
   }
 
-  onClientReport(fn: (addr: string, port: number, sessionId: number, response: string) => void): void {
-    this._onClientReport = fn;
+  onClientReport(handler: (addr: string, port: number, sessionId: number, response: string) => void): void {
+    this._onClientReport = handler;
   }
 
   /** Execute a Lua expression and return its result. Thread-safe via internal queue. */
@@ -118,7 +118,7 @@ export class LuaThread {
         LuaThread.CALL_TIMEOUT_MS,
       );
 
-      execution.then((v) => finish(null, v), (e) => finish(e));
+      execution.then((value) => finish(null, value), (error) => finish(error));
     });
   }
 
@@ -126,9 +126,9 @@ export class LuaThread {
     if (this._worker == null) return null;
 
     // Write script to shared buffer and signal the worker.
-    const sb = Buffer.from(script, 'utf8');
-    this._u8.set(sb, SCRIPT_OFFSET);
-    Atomics.store(this._i32, 1, sb.length);
+    const scriptBytes = Buffer.from(script, 'utf8');
+    this._u8.set(scriptBytes, SCRIPT_OFFSET);
+    Atomics.store(this._i32, 1, scriptBytes.length);
     Atomics.store(this._i32, 0, STATE_PENDING); // signal: script is ready
     Atomics.notify(this._i32, 0, 1);            // wake worker's Atomics.wait
 

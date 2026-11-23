@@ -56,52 +56,6 @@ export class RemoteCLU extends VirtualObject {
     this._remoteAddress = remoteAddress;
   }
 
-  private _getClient(): InstanceType<typeof CLUClient> | null {
-    if (this._client != null) return this._client;
-
-    const vs = this.virtualSystem;
-    if (vs == null) return null;
-
-    const localAddress = vs.localAddress;
-    if (!localAddress) return null;
-
-    const cipherKey = vs.getCipherKeyFor(this._remoteAddress);
-    if (cipherKey == null) return null;
-
-    const device = new CLUDevice({ address: this._remoteAddress });
-    this._client = new CLUClient(localAddress, device, cipherKey as CipherKey);
-    return this._client;
-  }
-
-  async remoteExecute(script: string): Promise<string | null> {
-    const client = this._getClient();
-    if (client == null) return null;
-    try {
-      return await client.execute(script) as string | null;
-    } catch (e) {
-      console.error(`[${this.name}] remote execute error:`, (e as Error).message);
-      return null;
-    }
-  }
-
-  remoteSet(objectName: string, featureIndex: number, value: LuaLike): void {
-    const v = luaLiteral(value);
-    void this.remoteExecute(`${objectName}:set(${featureIndex}, ${v})`);
-  }
-
-  async remoteGet(objectName: string, featureIndex: number): Promise<LuaLike> {
-    const result = await this.remoteExecute(`${objectName}:get(${featureIndex})`);
-    return parseRemoteResult(result);
-  }
-
-  remoteMethod(objectName: string, methodIndex: number, ...args: LuaLike[]): void {
-    const argStr = args.map(luaLiteral).join(', ');
-    const script = args.length > 0
-      ? `${objectName}:execute(${methodIndex}, ${argStr})`
-      : `${objectName}:execute(${methodIndex})`;
-    void this.remoteExecute(script);
-  }
-
   /** Proxy set: forwards to remote object with same name as this RemoteCLU. */
   override set(index: number, value: LuaLike): void {
     this.remoteSet(this.name, index, value);
@@ -111,19 +65,6 @@ export class RemoteCLU extends VirtualObject {
   override execute(index: number, ...args: LuaLike[]): LuaLike {
     this.remoteMethod(this.name, index, ...args);
     return null;
-  }
-
-  /** Find the interface definition for this object via ProjectRegistry + InterfaceRegistry. */
-  findObjectInterface(): ParsedObject | null {
-    const vs = this.virtualSystem;
-    if (vs == null) return null;
-    const pr = vs.getProjectRegistry();
-    const ir = vs.getInterfaceRegistry();
-    const clu = pr.getCluByIp(this._remoteAddress);
-    if (clu == null) return null;
-    const obj = pr.getObjectOnClu(clu.name, this.name);
-    if (obj == null) return null;
-    return ir.getObject(obj.typeName, 1);
   }
 
   override loop(): void {
@@ -153,6 +94,34 @@ export class RemoteCLU extends VirtualObject {
     }
   }
 
+  override close(): void {
+    if (this._mqttClientRef != null && this._mqttMsgHandler != null) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        (this._mqttClientRef as { off: (event: string, listener: unknown) => void }).off('message', this._mqttMsgHandler);
+      } catch { /* ignore */ }
+      this._mqttClientRef = null;
+      this._mqttMsgHandler = null;
+    }
+    if (this._client != null) {
+      try { this._client.close(); } catch { /* ignore */ }
+      this._client = null;
+    }
+  }
+
+  /** Find the interface definition for this object via ProjectRegistry + InterfaceRegistry. */
+  findObjectInterface(): ParsedObject | null {
+    const virtualSystem = this.virtualSystem;
+    if (virtualSystem == null) return null;
+    const projectRegistry = virtualSystem.getProjectRegistry();
+    const interfaceRegistry = virtualSystem.getInterfaceRegistry();
+    const clu = projectRegistry.getCluByIp(this._remoteAddress);
+    if (clu == null) return null;
+    const projectObject = projectRegistry.getObjectOnClu(clu.name, this.name);
+    if (projectObject == null) return null;
+    return interfaceRegistry.getObject(projectObject.typeName, 1);
+  }
+
   private _publishMqttDiscovery(iface: ParsedObject, mqttClient: unknown, clu: IVirtualCLU): void {
     const prefix = String(clu.getValue(CLU_FEATURES.MQTT_DISCOVERY_PREFIX) ?? 'homeassistant');
     const rootTopic = mqttRootTopic(clu.name, this.name);
@@ -164,10 +133,10 @@ export class RemoteCLU extends VirtualObject {
       model: iface.name,
     };
 
-    const publish = (integration: string, id: string, msg: object) => {
+    const publish = (integration: string, id: string, message: object) => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      (mqttClient as { publish: (t: string, p: string, o: object) => void })
-        .publish(mqttDiscoveryTopic(prefix, integration, id), JSON.stringify(msg), { retain: true, qos: 1 });
+      (mqttClient as { publish: (topic: string, payload: string, options: object) => void })
+        .publish(mqttDiscoveryTopic(prefix, integration, id), JSON.stringify(message), { retain: true, qos: 1 });
     };
 
     const spec = this._deviceSpec!;
@@ -212,10 +181,10 @@ export class RemoteCLU extends VirtualObject {
         break;
 
       case 'generic':
-        for (const f of spec.features) {
-          const fId = `${uniqueId}_${f.index}`;
-          publish('sensor', fId, mqttDiscoverySensor(f.name, fId, `${rootTopic}/feature/${f.index}`, {
-            unit: f.unit, device,
+        for (const feature of spec.features) {
+          const featureUniqueId = `${uniqueId}_${feature.index}`;
+          publish('sensor', featureUniqueId, mqttDiscoverySensor(feature.name, featureUniqueId, `${rootTopic}/feature/${feature.index}`, {
+            unit: feature.unit, device,
           }));
         }
         break;
@@ -243,8 +212,8 @@ export class RemoteCLU extends VirtualObject {
     }
 
     const client = mqttClient as {
-      subscribe: (t: string, o: object) => void;
-      on: (e: string, fn: unknown) => void;
+      subscribe: (topic: string, options: object) => void;
+      on: (event: string, listener: unknown) => void;
     };
     for (const topic of commandTopics) {
       client.subscribe(topic, { qos: 1 });
@@ -266,52 +235,52 @@ export class RemoteCLU extends VirtualObject {
 
     switch (spec.kind) {
       case 'light_onoff': {
-        const cmd = parseJsonSafe(payload) as { state?: string } | null;
-        const isOn = cmd?.state?.toUpperCase() !== 'OFF';
+        const command = parseJsonSafe(payload) as { state?: string } | null;
+        const isOn = command?.state?.toUpperCase() !== 'OFF';
         this.remoteSet(this.name, spec.featureIndex, isOn ? 1 : 0);
         break;
       }
       case 'dimmer': {
-        const cmd = parseJsonSafe(payload) as { state?: string; brightness?: number } | null;
-        if (cmd?.state?.toUpperCase() === 'OFF') {
+        const command = parseJsonSafe(payload) as { state?: string; brightness?: number } | null;
+        if (command?.state?.toUpperCase() === 'OFF') {
           this.remoteSet(this.name, spec.featureIndex, 0);
-        } else if (cmd?.brightness != null) {
-          this.remoteSet(this.name, spec.featureIndex, Math.max(0, Math.min(1, cmd.brightness / 255)));
+        } else if (command?.brightness != null) {
+          this.remoteSet(this.name, spec.featureIndex, Math.max(0, Math.min(1, command.brightness / 255)));
         } else {
           this.remoteSet(this.name, spec.featureIndex, 1.0);
         }
         break;
       }
       case 'rgb_light': {
-        const cmd = parseJsonSafe(payload) as { state?: string; color?: { r?: number; g?: number; b?: number; w?: number } } | null;
-        if (cmd?.state?.toUpperCase() === 'OFF') {
+        const command = parseJsonSafe(payload) as { state?: string; color?: { r?: number; g?: number; b?: number; w?: number } } | null;
+        if (command?.state?.toUpperCase() === 'OFF') {
           this.remoteSet(this.name, spec.rgbIndex, '#000000');
           this.remoteSet(this.name, spec.whiteIndex, 0);
-        } else if (cmd?.color) {
-          const r = Math.max(0, Math.min(255, cmd.color.r ?? 0));
-          const g = Math.max(0, Math.min(255, cmd.color.g ?? 0));
-          const b = Math.max(0, Math.min(255, cmd.color.b ?? 0));
-          const w = Math.max(0, Math.min(255, cmd.color.w ?? 0));
-          const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        } else if (command?.color) {
+          const red = Math.max(0, Math.min(255, command.color.r ?? 0));
+          const green = Math.max(0, Math.min(255, command.color.g ?? 0));
+          const blue = Math.max(0, Math.min(255, command.color.b ?? 0));
+          const white = Math.max(0, Math.min(255, command.color.w ?? 0));
+          const hex = `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue.toString(16).padStart(2, '0')}`;
           this.remoteSet(this.name, spec.rgbIndex, hex);
-          this.remoteSet(this.name, spec.whiteIndex, w / 255);
+          this.remoteSet(this.name, spec.whiteIndex, white / 255);
         }
         break;
       }
       case 'shutter': {
         if (topic === `${rootTopic}/set`) {
-          const cmd = payload.trim().toUpperCase();
-          if (cmd === 'STOP' && spec.stopMethodIndex != null) {
+          const command = payload.trim().toUpperCase();
+          if (command === 'STOP' && spec.stopMethodIndex != null) {
             this.remoteMethod(this.name, spec.stopMethodIndex);
-          } else if (cmd === 'OPEN' && spec.setPositionMethodIndex != null) {
+          } else if (command === 'OPEN' && spec.setPositionMethodIndex != null) {
             this.remoteMethod(this.name, spec.setPositionMethodIndex, 100);
-          } else if (cmd === 'CLOSE' && spec.setPositionMethodIndex != null) {
+          } else if (command === 'CLOSE' && spec.setPositionMethodIndex != null) {
             this.remoteMethod(this.name, spec.setPositionMethodIndex, 0);
           }
         } else if (topic === `${rootTopic}/set_position`) {
-          const pos = parseInt(payload.trim(), 10);
-          if (!isNaN(pos) && spec.setPositionMethodIndex != null) {
-            this.remoteMethod(this.name, spec.setPositionMethodIndex, Math.max(0, Math.min(100, pos)));
+          const position = parseInt(payload.trim(), 10);
+          if (!isNaN(position) && spec.setPositionMethodIndex != null) {
+            this.remoteMethod(this.name, spec.setPositionMethodIndex, Math.max(0, Math.min(100, position)));
           }
         }
         break;
@@ -325,7 +294,7 @@ export class RemoteCLU extends VirtualObject {
 
     const rootTopic = mqttRootTopic(clu.name, this.name);
     const publish = (topic: string, payload: string) => {
-      (mqttClient as { publish: (t: string, p: string, o: object) => void })
+      (mqttClient as { publish: (topic: string, payload: string, options: object) => void })
         .publish(topic, payload, { retain: false, qos: 0 });
     };
 
@@ -333,49 +302,49 @@ export class RemoteCLU extends VirtualObject {
       case 'temperature_sensor':
       case 'luminosity_sensor':
       case 'voltage_sensor': {
-        const v = await this.remoteGet(this.name, spec.featureIndex);
-        if (v !== null) publish(`${rootTopic}/state`, String(v));
+        const featureValue = await this.remoteGet(this.name, spec.featureIndex);
+        if (featureValue !== null) publish(`${rootTopic}/state`, String(featureValue));
         break;
       }
       case 'light_onoff': {
-        const v = await this.remoteGet(this.name, spec.featureIndex);
-        if (v !== null) {
-          publish(`${rootTopic}/state`, JSON.stringify({ state: Number(v) > 0 ? 'ON' : 'OFF' }));
+        const featureValue = await this.remoteGet(this.name, spec.featureIndex);
+        if (featureValue !== null) {
+          publish(`${rootTopic}/state`, JSON.stringify({ state: Number(featureValue) > 0 ? 'ON' : 'OFF' }));
         }
         break;
       }
       case 'dimmer': {
-        const v = await this.remoteGet(this.name, spec.featureIndex);
-        if (v !== null) {
-          const brightness = Math.round(Number(v) * 255);
+        const featureValue = await this.remoteGet(this.name, spec.featureIndex);
+        if (featureValue !== null) {
+          const brightness = Math.round(Number(featureValue) * 255);
           publish(`${rootTopic}/state`, JSON.stringify({ state: brightness > 0 ? 'ON' : 'OFF', brightness }));
         }
         break;
       }
       case 'rgb_light': {
-        const [rgb, white] = await Promise.all([
+        const [rgbValue, whiteValue] = await Promise.all([
           this.remoteGet(this.name, spec.rgbIndex),
           this.remoteGet(this.name, spec.whiteIndex),
         ]);
-        if (rgb !== null) {
-          const hex = String(rgb).replace(/^#/, '').padStart(6, '0');
-          const r = parseInt(hex.slice(0, 2), 16);
-          const g = parseInt(hex.slice(2, 4), 16);
-          const b = parseInt(hex.slice(4, 6), 16);
-          const w = white != null ? Math.round(Number(white) * 255) : 0;
+        if (rgbValue !== null) {
+          const hex = String(rgbValue).replace(/^#/, '').padStart(6, '0');
+          const red = parseInt(hex.slice(0, 2), 16);
+          const green = parseInt(hex.slice(2, 4), 16);
+          const blue = parseInt(hex.slice(4, 6), 16);
+          const white = whiteValue != null ? Math.round(Number(whiteValue) * 255) : 0;
           publish(`${rootTopic}/state`, JSON.stringify({
-            state: r > 0 || g > 0 || b > 0 || w > 0 ? 'ON' : 'OFF',
-            color: { r, g, b, w },
+            state: red > 0 || green > 0 || blue > 0 || white > 0 ? 'ON' : 'OFF',
+            color: { r: red, g: green, b: blue, w: white },
           }));
         }
         break;
       }
       case 'shutter': {
-        const v = await this.remoteGet(this.name, spec.positionIndex);
-        if (v !== null) {
-          const pos = Number(v);
-          publish(`${rootTopic}/state`, pos >= 100 ? 'OPEN' : pos <= 0 ? 'CLOSE' : 'OPEN');
-          publish(`${rootTopic}/position`, String(pos));
+        const featureValue = await this.remoteGet(this.name, spec.positionIndex);
+        if (featureValue !== null) {
+          const position = Number(featureValue);
+          publish(`${rootTopic}/state`, position >= 100 ? 'OPEN' : position <= 0 ? 'CLOSE' : 'OPEN');
+          publish(`${rootTopic}/position`, String(position));
         }
         break;
       }
@@ -383,56 +352,87 @@ export class RemoteCLU extends VirtualObject {
     }
   }
 
-  override close(): void {
-    if (this._mqttClientRef != null && this._mqttMsgHandler != null) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        (this._mqttClientRef as { off: (e: string, f: unknown) => void }).off('message', this._mqttMsgHandler);
-      } catch { /* ignore */ }
-      this._mqttClientRef = null;
-      this._mqttMsgHandler = null;
+  remoteSet(objectName: string, featureIndex: number, value: LuaLike): void {
+    const valueLiteral = luaLiteral(value);
+    void this.remoteExecute(`${objectName}:set(${featureIndex}, ${valueLiteral})`);
+  }
+
+  async remoteGet(objectName: string, featureIndex: number): Promise<LuaLike> {
+    const result = await this.remoteExecute(`${objectName}:get(${featureIndex})`);
+    return parseRemoteResult(result);
+  }
+
+  remoteMethod(objectName: string, methodIndex: number, ...args: LuaLike[]): void {
+    const argStr = args.map(luaLiteral).join(', ');
+    const script = args.length > 0
+      ? `${objectName}:execute(${methodIndex}, ${argStr})`
+      : `${objectName}:execute(${methodIndex})`;
+    void this.remoteExecute(script);
+  }
+
+  async remoteExecute(script: string): Promise<string | null> {
+    const client = this._getClient();
+    if (client == null) return null;
+    try {
+      return await client.execute(script) as string | null;
+    } catch (error) {
+      console.error(`[${this.name}] remote execute error:`, (error as Error).message);
+      return null;
     }
-    if (this._client != null) {
-      try { this._client.close(); } catch { /* ignore */ }
-      this._client = null;
-    }
+  }
+
+  private _getClient(): InstanceType<typeof CLUClient> | null {
+    if (this._client != null) return this._client;
+
+    const virtualSystem = this.virtualSystem;
+    if (virtualSystem == null) return null;
+
+    const localAddress = virtualSystem.localAddress;
+    if (!localAddress) return null;
+
+    const cipherKey = virtualSystem.getCipherKeyFor(this._remoteAddress);
+    if (cipherKey == null) return null;
+
+    const device = new CLUDevice({ address: this._remoteAddress });
+    this._client = new CLUClient(localAddress, device, cipherKey as CipherKey);
+    return this._client;
   }
 }
 
 function resolveDeviceSpec(iface: ParsedObject): DeviceSpec {
-  const n = iface.name.toUpperCase();
-  const findF = (name: string) => iface.features.find(f => f.name.toLowerCase() === name.toLowerCase());
-  const findM = (name: string) => iface.methods.find(m => m.name.toLowerCase() === name.toLowerCase());
+  const upperName = iface.name.toUpperCase();
+  const findFeature = (name: string) => iface.features.find(feature => feature.name.toLowerCase() === name.toLowerCase());
+  const findMethod = (name: string) => iface.methods.find(method => method.name.toLowerCase() === name.toLowerCase());
 
-  if (n.includes('TEMPERATURE')) {
-    const f = findF('Value');
-    if (f?.get) return { kind: 'temperature_sensor', featureIndex: f.index, unit: f.unit ?? '°C' };
+  if (upperName.includes('TEMPERATURE')) {
+    const valueFeature = findFeature('Value');
+    if (valueFeature?.get) return { kind: 'temperature_sensor', featureIndex: valueFeature.index, unit: valueFeature.unit ?? '°C' };
   }
-  if (n.includes('LUMINOSITY')) {
-    const f = findF('Value');
-    if (f?.get) return { kind: 'luminosity_sensor', featureIndex: f.index };
+  if (upperName.includes('LUMINOSITY')) {
+    const valueFeature = findFeature('Value');
+    if (valueFeature?.get) return { kind: 'luminosity_sensor', featureIndex: valueFeature.index };
   }
-  if (n.includes('VOLTAGE') || n.includes('POWER_SUPPLY')) {
-    const f = findF('Value');
-    if (f?.get) return { kind: 'voltage_sensor', featureIndex: f.index, unit: f.unit ?? 'V' };
+  if (upperName.includes('VOLTAGE') || upperName.includes('POWER_SUPPLY')) {
+    const valueFeature = findFeature('Value');
+    if (valueFeature?.get) return { kind: 'voltage_sensor', featureIndex: valueFeature.index, unit: valueFeature.unit ?? 'V' };
   }
-  if (n.includes('SHUTTER')) {
-    const posF = findF('Position');
-    if (posF?.get) {
+  if (upperName.includes('SHUTTER')) {
+    const positionFeature = findFeature('Position');
+    if (positionFeature?.get) {
       return {
         kind: 'shutter',
-        positionIndex: posF.index,
-        stopMethodIndex: findM('Stop')?.index ?? null,
-        setPositionMethodIndex: (findM('SetPosition') ?? findM('Set position'))?.index ?? null,
+        positionIndex: positionFeature.index,
+        stopMethodIndex: findMethod('Stop')?.index ?? null,
+        setPositionMethodIndex: (findMethod('SetPosition') ?? findMethod('Set position'))?.index ?? null,
       };
     }
   }
-  if (n.startsWith('LED_RGB') || n.startsWith('R_LED_RGB')) {
-    const rgb = findF('RGB');
-    const red = findF('RedValue');
-    const green = findF('GreenValue');
-    const blue = findF('BlueValue');
-    const white = findF('WhiteValue');
+  if (upperName.startsWith('LED_RGB') || upperName.startsWith('R_LED_RGB')) {
+    const rgb = findFeature('RGB');
+    const red = findFeature('RedValue');
+    const green = findFeature('GreenValue');
+    const blue = findFeature('BlueValue');
+    const white = findFeature('WhiteValue');
     if (rgb && red && green && blue && white) {
       return {
         kind: 'rgb_light',
@@ -444,19 +444,23 @@ function resolveDeviceSpec(iface: ParsedObject): DeviceSpec {
       };
     }
   }
-  if (n.includes('DIMM')) {
-    const f = findF('Value');
-    if (f?.get) return { kind: 'dimmer', featureIndex: f.index };
+  if (upperName.includes('DIMM')) {
+    const valueFeature = findFeature('Value');
+    if (valueFeature?.get) return { kind: 'dimmer', featureIndex: valueFeature.index };
   }
-  if (n.includes('DOUT') || n.includes('RELAY')) {
-    const f = findF('Value');
-    if (f?.get) return { kind: 'light_onoff', featureIndex: f.index };
+  if (upperName.includes('DOUT') || upperName.includes('RELAY')) {
+    const valueFeature = findFeature('Value');
+    if (valueFeature?.get) return { kind: 'light_onoff', featureIndex: valueFeature.index };
   }
-  if (n.includes('BUTTON')) {
+  if (upperName.includes('BUTTON')) {
     return { kind: 'button' };
   }
 
-  return { kind: 'generic', features: iface.features.filter(f => f.get) };
+  return { kind: 'generic', features: iface.features.filter(feature => feature.get) };
+}
+
+function parseJsonSafe(payload: string): unknown {
+  try { return JSON.parse(payload); } catch { return null; }
 }
 
 function luaLiteral(value: LuaLike): string {
@@ -472,12 +476,8 @@ function parseRemoteResult(raw: string | null): LuaLike {
   if (raw === null || raw === 'nil') return null;
   if (raw === 'true') return true;
   if (raw === 'false') return false;
-  const n = Number(raw);
-  if (!isNaN(n) && raw.trim() !== '') return n;
+  const numericValue = Number(raw);
+  if (!isNaN(numericValue) && raw.trim() !== '') return numericValue;
   if (raw.startsWith('"') && raw.endsWith('"')) return raw.slice(1, -1);
   return raw;
-}
-
-function parseJsonSafe(payload: string): unknown {
-  try { return JSON.parse(payload); } catch { return null; }
 }

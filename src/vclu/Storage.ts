@@ -38,8 +38,8 @@ export class Storage extends VirtualObject {
       this._variables.clear();
       try {
         writeFileSync(this._storagePath, '{}', 'utf8');
-      } catch (e) {
-        console.error(`[${this.name}] erase storage error:`, e);
+      } catch (error) {
+        console.error(`[${this.name}] erase storage error:`, error);
       }
       this.setValue(STORAGE_FEATURES.STORAGE_UTILIZATION, 0);
       return null;
@@ -72,11 +72,11 @@ export class Storage extends VirtualObject {
       const raw = readFileSync(this._storagePath, 'utf8').trim();
       if (!raw) return;
       const parsed = JSON.parse(raw) as Record<string, LuaLike>;
-      for (const [k, v] of Object.entries(parsed)) {
-        this._variables.set(k, v as LuaLike);
+      for (const [name, value] of Object.entries(parsed)) {
+        this._variables.set(name, value as LuaLike);
       }
-    } catch (e) {
-      console.error(`[${this.name}] restore error:`, e);
+    } catch (error) {
+      console.error(`[${this.name}] restore error:`, error);
     }
   }
 
@@ -107,8 +107,8 @@ export class Storage extends VirtualObject {
       for (const [k, v] of this._variables) obj[k] = v;
       writeFileSync(this._storagePath, JSON.stringify(obj, null, 2), 'utf8');
       this.setValue(STORAGE_FEATURES.STORAGE_UTILIZATION, this._variables.size);
-    } catch (e) {
-      console.error(`[${this.name}] persist error:`, e);
+    } catch (error) {
+      console.error(`[${this.name}] persist error:`, error);
     }
   }
 

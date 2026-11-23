@@ -48,26 +48,26 @@ describe('MQTT_ORIGIN', () => {
 
 describe('common base fields', () => {
   const root = mqttRootTopic('CLU1', 'OBJ1');
-  const s = mqttDiscoverySensor('My Sensor', 'uid1', root);
+  const sensor = mqttDiscoverySensor('My Sensor', 'uid1', root);
 
   it('availability_topic is MQTT_AVAILABILITY_TOPIC', () => {
-    assert.equal(s.availability_topic, MQTT_AVAILABILITY_TOPIC);
+    assert.equal(sensor.availability_topic, MQTT_AVAILABILITY_TOPIC);
   });
 
   it('state_topic is {root}/state', () => {
-    assert.equal(s.state_topic, `${root}/state`);
+    assert.equal(sensor.state_topic, `${root}/state`);
   });
 
   it('~ is root topic', () => {
-    assert.equal(s['~'], root);
+    assert.equal(sensor['~'], root);
   });
 
   it('unique_id set', () => {
-    assert.equal(s.unique_id, 'uid1');
+    assert.equal(sensor.unique_id, 'uid1');
   });
 
   it('origin is MQTT_ORIGIN', () => {
-    assert.deepEqual(s.origin, MQTT_ORIGIN);
+    assert.deepEqual(sensor.origin, MQTT_ORIGIN);
   });
 });
 
@@ -75,101 +75,101 @@ describe('mqttDiscoverySensor', () => {
   const root = mqttRootTopic('CLU1', 'Sensor1');
 
   it('no opts → device_class and unit undefined', () => {
-    const d = mqttDiscoverySensor('Sensor', 'uid', root);
-    assert.equal(d.device_class, undefined);
-    assert.equal(d.unit_of_measurement, undefined);
+    const discovery = mqttDiscoverySensor('Sensor', 'uid', root);
+    assert.equal(discovery.device_class, undefined);
+    assert.equal(discovery.unit_of_measurement, undefined);
   });
 
   it('deviceClass option', () => {
-    const d = mqttDiscoverySensor('Sensor', 'uid', root, { deviceClass: 'temperature' });
-    assert.equal(d.device_class, 'temperature');
+    const discovery = mqttDiscoverySensor('Sensor', 'uid', root, { deviceClass: 'temperature' });
+    assert.equal(discovery.device_class, 'temperature');
   });
 
   it('unit option', () => {
-    const d = mqttDiscoverySensor('Sensor', 'uid', root, { unit: '°C' });
-    assert.equal(d.unit_of_measurement, '°C');
+    const discovery = mqttDiscoverySensor('Sensor', 'uid', root, { unit: '°C' });
+    assert.equal(discovery.unit_of_measurement, '°C');
   });
 
   it('valueTemplate option', () => {
-    const d = mqttDiscoverySensor('Sensor', 'uid', root, { valueTemplate: '{{ value | int }}' });
-    assert.equal(d.value_template, '{{ value | int }}');
+    const discovery = mqttDiscoverySensor('Sensor', 'uid', root, { valueTemplate: '{{ value | int }}' });
+    assert.equal(discovery.value_template, '{{ value | int }}');
   });
 });
 
 describe('mqttDiscoveryLight', () => {
   const root = mqttRootTopic('CLU1', 'Light1');
-  const d = mqttDiscoveryLight('Light', 'uid', root, ['brightness']);
+  const discovery = mqttDiscoveryLight('Light', 'uid', root, ['brightness']);
 
   it('has command_topic', () => {
-    assert.equal(d.command_topic, `${root}/set`);
+    assert.equal(discovery.command_topic, `${root}/set`);
   });
 
   it('schema is json', () => {
-    assert.equal(d.schema, 'json');
+    assert.equal(discovery.schema, 'json');
   });
 
   it('supported_color_modes matches arg', () => {
-    assert.deepEqual(d.supported_color_modes, ['brightness']);
+    assert.deepEqual(discovery.supported_color_modes, ['brightness']);
   });
 });
 
 describe('mqttDiscoveryButton', () => {
   const root = mqttRootTopic('CLU1', 'Btn1');
-  const d = mqttDiscoveryButton('Button', 'uid', root);
+  const discovery = mqttDiscoveryButton('Button', 'uid', root);
 
   it('event_types includes press', () => {
-    assert.ok(d.event_types.includes('press'));
+    assert.ok(discovery.event_types.includes('press'));
   });
 });
 
 describe('mqttDiscoveryShutter', () => {
   const root = mqttRootTopic('CLU1', 'Shutter1');
-  const d = mqttDiscoveryShutter('Shutter', 'uid', root);
+  const discovery = mqttDiscoveryShutter('Shutter', 'uid', root);
 
   it('position_topic is {root}/position', () => {
-    assert.equal(d.position_topic, `${root}/position`);
+    assert.equal(discovery.position_topic, `${root}/position`);
   });
 
   it('set_position_topic is {root}/set_position', () => {
-    assert.equal(d.set_position_topic, `${root}/set_position`);
+    assert.equal(discovery.set_position_topic, `${root}/set_position`);
   });
 
-  it('state_open is OPEN', () => assert.equal(d.state_open, 'OPEN'));
-  it('state_closed is CLOSE', () => assert.equal(d.state_closed, 'CLOSE'));
-  it('state_stopped is STOP', () => assert.equal(d.state_stopped, 'STOP'));
+  it('state_open is OPEN', () => assert.equal(discovery.state_open, 'OPEN'));
+  it('state_closed is CLOSE', () => assert.equal(discovery.state_closed, 'CLOSE'));
+  it('state_stopped is STOP', () => assert.equal(discovery.state_stopped, 'STOP'));
 
   it('command_topic set', () => {
-    assert.equal(d.command_topic, `${root}/set`);
+    assert.equal(discovery.command_topic, `${root}/set`);
   });
 });
 
 describe('mqttDiscoveryNumberInteger', () => {
   const root = mqttRootTopic('CLU1', 'Num1');
-  const d = mqttDiscoveryNumberInteger('Number', 'uid', root, 0, 100);
+  const discovery = mqttDiscoveryNumberInteger('Number', 'uid', root, 0, 100);
 
   it('min and max', () => {
-    assert.equal(d.min, 0);
-    assert.equal(d.max, 100);
+    assert.equal(discovery.min, 0);
+    assert.equal(discovery.max, 100);
   });
 
   it('data-type is int64', () => {
-    assert.equal(d['data-type'], 'int64');
+    assert.equal(discovery['data-type'], 'int64');
   });
 
   it('value_template uses int', () => {
-    assert.ok(d.value_template?.includes('int'));
+    assert.ok(discovery.value_template?.includes('int'));
   });
 });
 
 describe('mqttDiscoveryNumberFloat', () => {
   const root = mqttRootTopic('CLU1', 'Float1');
-  const d = mqttDiscoveryNumberFloat('Float', 'uid', root, 0.0, 1.0);
+  const discovery = mqttDiscoveryNumberFloat('Float', 'uid', root, 0.0, 1.0);
 
   it('data-type is float32', () => {
-    assert.equal(d['data-type'], 'float32');
+    assert.equal(discovery['data-type'], 'float32');
   });
 
   it('value_template uses float', () => {
-    assert.ok(d.value_template?.includes('float'));
+    assert.ok(discovery.value_template?.includes('float'));
   });
 });

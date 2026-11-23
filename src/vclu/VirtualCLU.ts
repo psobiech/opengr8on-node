@@ -51,7 +51,7 @@ export const CLU_EVENTS = {
 } as const;
 
 
-interface TzParts {
+interface TimeZoneParts {
   year: number;
   month: number;
   day: number;
@@ -62,11 +62,7 @@ interface TzParts {
 }
 
 interface MqttCapable {
-  mqttOnValueChange(objectId: LuaLike, fn: LuaLike): void;
-}
-
-function isMqttCapable(obj: unknown): obj is MqttCapable {
-  return typeof (obj as MqttCapable).mqttOnValueChange === 'function';
+  mqttOnValueChange(objectId: LuaLike, callback: LuaLike): void;
 }
 
 export class VirtualCLU extends VirtualObject {
@@ -95,12 +91,12 @@ export class VirtualCLU extends VirtualObject {
     this.setValue(CLU_FEATURES.STATE, CLU_STATE.STARTING);
     this.registerFeature(CLU_FEATURES.DATE, () => this._formatDate());
     this.registerFeature(CLU_FEATURES.TIME, () => this._formatTime());
-    this.registerFeature(CLU_FEATURES.DAY_OF_MONTH, () => this._tzParts().day);
-    this.registerFeature(CLU_FEATURES.MONTH, () => this._tzParts().month);
-    this.registerFeature(CLU_FEATURES.YEAR, () => this._tzParts().year);
-    this.registerFeature(CLU_FEATURES.DAY_OF_WEEK, () => this._tzParts().weekday);
-    this.registerFeature(CLU_FEATURES.HOUR, () => this._tzParts().hour);
-    this.registerFeature(CLU_FEATURES.MINUTE, () => this._tzParts().minute);
+    this.registerFeature(CLU_FEATURES.DAY_OF_MONTH, () => this._timeZoneParts().day);
+    this.registerFeature(CLU_FEATURES.MONTH, () => this._timeZoneParts().month);
+    this.registerFeature(CLU_FEATURES.YEAR, () => this._timeZoneParts().year);
+    this.registerFeature(CLU_FEATURES.DAY_OF_WEEK, () => this._timeZoneParts().weekday);
+    this.registerFeature(CLU_FEATURES.HOUR, () => this._timeZoneParts().hour);
+    this.registerFeature(CLU_FEATURES.MINUTE, () => this._timeZoneParts().minute);
     this.registerFeature(CLU_FEATURES.TIMESTAMP, () =>
       Math.floor(this._currentDate.getTime() / 1000),
     );
@@ -112,7 +108,7 @@ export class VirtualCLU extends VirtualObject {
     this.setValue(CLU_FEATURES.MQTT_DISCOVERY_PREFIX, 'homeassistant');
     this.setValue(CLU_FEATURES.MQTT_MESSAGE, null);
 
-    this.registerMethod(CLU_METHODS.ADD_TO_LOG, (msg) => this._addToLog(msg as string));
+    this.registerMethod(CLU_METHODS.ADD_TO_LOG, (message) => this._addToLog(message as string));
     this.registerMethod(CLU_METHODS.CLEAR_LOG, () => this._clearLog());
     this.registerMethod(
       CLU_METHODS.MQTT_SEND_DISCOVERY,
@@ -128,74 +124,18 @@ export class VirtualCLU extends VirtualObject {
     this.registerMethod(CLU_METHODS.MQTT_SEND_VALUE, (uniqueId, stateVal) =>
       this._mqttSendValue(uniqueId as string, String(stateVal ?? '')),
     );
-    this.registerMethod(CLU_METHODS.MQTT_ON_VALUE_CHANGE, (objectId, fn) =>
-      this._mqttOnValueChange(objectId as string, fn),
+    this.registerMethod(CLU_METHODS.MQTT_ON_VALUE_CHANGE, (objectId, callback) =>
+      this._mqttOnValueChange(objectId as string, callback),
     );
 
     this._timeChangeTimer = setInterval(() => {
       this._currentDate = new Date();
-      const minute = this._tzParts().minute;
+      const minute = this._timeZoneParts().minute;
       if (this._lastMinute !== -1 && minute !== this._lastMinute) {
         this.triggerEvent(CLU_EVENTS.TIME_CHANGE);
       }
       this._lastMinute = minute;
     }, 1000);
-  }
-
-  private _tz(): string {
-    return cluTimeZoneId(Number(this.getValue(CLU_FEATURES.TIME_ZONE) ?? 0));
-  }
-
-  private _tzParts(): TzParts {
-    const tz = this._tz();
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      weekday: 'short',
-    }).formatToParts(this._currentDate);
-
-    const get = (type: string): number => {
-      const v = parts.find((p) => p.type === type)?.value ?? '0';
-      const n = Number(v);
-      return isNaN(n) ? 0 : n;
-    };
-    const wdStr = parts.find((p) => p.type === 'weekday')?.value ?? 'Mon';
-    const wdIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wdStr);
-    const isoWd = wdIndex === 0 ? 7 : wdIndex > 0 ? wdIndex : 1;
-    // hour12:false can return 24 for midnight in some locales
-    const rawHour = get('hour');
-
-    return {
-      year: get('year'),
-      month: get('month'),
-      day: get('day'),
-      hour: rawHour === 24 ? 0 : rawHour,
-      minute: get('minute'),
-      second: get('second'),
-      weekday: isoWd,
-    };
-  }
-
-  private _formatDate(): string {
-    const p = this._tzParts();
-    return [
-      p.year,
-      String(p.month).padStart(2, '0'),
-      String(p.day).padStart(2, '0'),
-    ].join('-');
-  }
-
-  private _formatTime(): string {
-    const p = this._tzParts();
-    return [p.hour, p.minute, p.second]
-      .map((v) => String(v).padStart(2, '0'))
-      .join(':');
   }
 
   get state(): CluState {
@@ -212,18 +152,6 @@ export class VirtualCLU extends VirtualObject {
     return this._mqttClient;
   }
 
-  setMqttConnected(connected: boolean): void {
-    this.setValue(CLU_FEATURES.MQTT_CONNECTION, connected);
-  }
-
-  isMqttEnabled(): boolean {
-    return Boolean(this.get(CLU_FEATURES.USE_MQTT));
-  }
-
-  getMqttUrl(): string {
-    return String(this.get(CLU_FEATURES.MQTT_URL) ?? '');
-  }
-
   override loop(): void {
     const enabled = this.isMqttEnabled();
     if (!enabled && this._mqttClient != null) {
@@ -237,6 +165,25 @@ export class VirtualCLU extends VirtualObject {
         this._mqttStartPending = false;
       });
     }
+  }
+
+  override close(): void {
+    if (this._timeChangeTimer != null) {
+      clearInterval(this._timeChangeTimer);
+      this._timeChangeTimer = null;
+    }
+    if (this._mqttClient != null) {
+      try {
+        this._mqttClient.publish(MQTT_AVAILABILITY_TOPIC, 'offline', { retain: true, qos: 1 });
+      } catch { /* ignore */ }
+      this._mqttClient.end();
+      this._mqttClient = null;
+    }
+    this._mqttTopicHandlers.clear();
+  }
+
+  isMqttEnabled(): boolean {
+    return Boolean(this.get(CLU_FEATURES.USE_MQTT));
   }
 
   private async _startMqtt(): Promise<void> {
@@ -288,23 +235,87 @@ export class VirtualCLU extends VirtualObject {
         client.publish(MQTT_AVAILABILITY_TOPIC, 'online', { retain: true, qos: 1 });
       });
       client.on('close', () => this.setMqttConnected(false));
-      client.on('error', (e: Error) =>
-        console.error(`[${this._name}] MQTT error:`, e.message),
+      client.on('error', (error: Error) =>
+        console.error(`[${this._name}] MQTT error:`, error.message),
       );
 
       // single global message dispatcher
       client.on('message', (topic: string, payload: Buffer) => {
         this._mqttTopicHandlers.get(topic)?.(payload);
       });
-    } catch (e) {
-      console.error(`[${this._name}] MQTT connect error:`, e);
+    } catch (error) {
+      console.error(`[${this._name}] MQTT connect error:`, error);
     }
   }
 
-  private _addToLog(msg: LuaLike): null {
-    this.setValue(CLU_FEATURES.LOG, msg);
-    if (msg !== null && msg !== undefined) {
-      console.info(`[${this._name}] ${msg}`);
+  getMqttUrl(): string {
+    return String(this.get(CLU_FEATURES.MQTT_URL) ?? '');
+  }
+
+  setMqttConnected(connected: boolean): void {
+    this.setValue(CLU_FEATURES.MQTT_CONNECTION, connected);
+  }
+
+  private _formatDate(): string {
+    const parts = this._timeZoneParts();
+    return [
+      parts.year,
+      String(parts.month).padStart(2, '0'),
+      String(parts.day).padStart(2, '0'),
+    ].join('-');
+  }
+
+  private _formatTime(): string {
+    const parts = this._timeZoneParts();
+    return [parts.hour, parts.minute, parts.second]
+      .map((value) => String(value).padStart(2, '0'))
+      .join(':');
+  }
+
+  private _timeZoneParts(): TimeZoneParts {
+    const timeZone = this._timeZone();
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      weekday: 'short',
+    }).formatToParts(this._currentDate);
+
+    const get = (type: string): number => {
+      const rawValue = parts.find((part) => part.type === type)?.value ?? '0';
+      const numericValue = Number(rawValue);
+      return isNaN(numericValue) ? 0 : numericValue;
+    };
+    const weekdayName = parts.find((part) => part.type === 'weekday')?.value ?? 'Mon';
+    const weekdayIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekdayName);
+    const isoWeekday = weekdayIndex === 0 ? 7 : weekdayIndex > 0 ? weekdayIndex : 1;
+    // hour12:false can return 24 for midnight in some locales
+    const rawHour = get('hour');
+
+    return {
+      year: get('year'),
+      month: get('month'),
+      day: get('day'),
+      hour: rawHour === 24 ? 0 : rawHour,
+      minute: get('minute'),
+      second: get('second'),
+      weekday: isoWeekday,
+    };
+  }
+
+  private _timeZone(): string {
+    return cluTimeZoneId(Number(this.getValue(CLU_FEATURES.TIME_ZONE) ?? 0));
+  }
+
+  private _addToLog(message: LuaLike): null {
+    this.setValue(CLU_FEATURES.LOG, message);
+    if (message !== null && message !== undefined) {
+      console.info(`[${this._name}] ${message}`);
     }
     return null;
   }
@@ -365,30 +376,19 @@ export class VirtualCLU extends VirtualObject {
     return null;
   }
 
-  private _mqttOnValueChange(objectId: LuaLike, fn: LuaLike): null {
+  private _mqttOnValueChange(objectId: LuaLike, callback: LuaLike): null {
     if (this.virtualSystem == null || typeof objectId !== 'string') return null;
     const parts = objectId.split('->');
     if (parts.length !== 2) return null;
     const [cluName] = parts;
-    const obj = this.virtualSystem.getObject(cluName);
-    if (isMqttCapable(obj)) {
-      obj.mqttOnValueChange(objectId, fn);
+    const virtualObject = this.virtualSystem.getObject(cluName);
+    if (isMqttCapable(virtualObject)) {
+      virtualObject.mqttOnValueChange(objectId, callback);
     }
     return null;
   }
+}
 
-  override close(): void {
-    if (this._timeChangeTimer != null) {
-      clearInterval(this._timeChangeTimer);
-      this._timeChangeTimer = null;
-    }
-    if (this._mqttClient != null) {
-      try {
-        this._mqttClient.publish(MQTT_AVAILABILITY_TOPIC, 'offline', { retain: true, qos: 1 });
-      } catch { /* ignore */ }
-      this._mqttClient.end();
-      this._mqttClient = null;
-    }
-    this._mqttTopicHandlers.clear();
-  }
+function isMqttCapable(candidate: unknown): candidate is MqttCapable {
+  return typeof (candidate as MqttCapable).mqttOnValueChange === 'function';
 }

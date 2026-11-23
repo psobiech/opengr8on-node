@@ -83,9 +83,9 @@ export class HttpListener extends HttpObject {
       const query = urlDecodeQuery(url.search) as LuaLike;
 
       const headers: Record<string, string> = {};
-      for (const [k, v] of Object.entries(req.headers)) {
-        if (typeof v === 'string') headers[k] = v;
-        else if (Array.isArray(v)) headers[k] = v[0] ?? '';
+      for (const [headerName, headerValue] of Object.entries(req.headers)) {
+        if (typeof headerValue === 'string') headers[headerName] = headerValue;
+        else if (Array.isArray(headerValue)) headers[headerName] = headerValue[0] ?? '';
       }
 
       const contentType = req.headers['content-type'] ?? null;
@@ -113,7 +113,7 @@ export class HttpListener extends HttpObject {
         if (res.writableEnded) return;
         try { res.writeHead(404); res.end(); } catch { /* closed */ }
       });
-    }).catch((e) => console.error(`[${this.name}] request handler error:`, e));
+    }).catch((error) => console.error(`[${this.name}] request handler error:`, error));
   }
 
   private _onSendResponse(bodyArg: LuaLike): null {
@@ -145,8 +145,8 @@ export class HttpListener extends HttpObject {
       headers['Content-Length'] = String(bodyBuf.length);
       res.writeHead(status, headers);
       res.end(bodyBuf);
-    } catch (e) {
-      console.error(`[${this.name}] sendResponse error:`, e);
+    } catch (error) {
+      console.error(`[${this.name}] sendResponse error:`, error);
       try { res.writeHead(500); res.end(); } catch { /* closed */ }
     } finally {
       this._currentRes = null;

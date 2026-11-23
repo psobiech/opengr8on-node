@@ -1,6 +1,11 @@
 import { TLVType, type TLVRecord } from './StatusPollResponse.js';
 
-const TLV_NAMES = Object.fromEntries(Object.entries(TLVType).map(([k, v]) => [v, k]));
+const TLV_NAMES = Object.fromEntries(Object.entries(TLVType).map(([typeName, typeValue]) => [typeValue, typeName]));
+
+export function decodeTlvRecord(record: TLVRecord): string {
+  const typeName = TLV_NAMES[record.type] ?? `0x${record.type.toString(16).padStart(2, '0')}`;
+  return `${typeName}: ${decodeValue(record.type, record.data)}`;
+}
 
 export function decodeValue(type: number, data: Buffer): string {
   switch (type) {
@@ -21,17 +26,12 @@ export function decodeValue(type: number, data: Buffer): string {
       return data.length >= 1 ? (data[0] === 0 ? 'idle' : 'active') : data.toString('hex');
     case TLVType.POLL_COUNTER: {
       if (data.length < 1) return data.toString('hex');
-      const v = data.length >= 3
+      const counter = data.length >= 3
         ? (data[2] << 16) | (data[1] << 8) | data[0]
         : data[0];
-      return String(v);
+      return String(counter);
     }
     default:
       return data.toString('hex');
   }
-}
-
-export function decodeTlvRecord(record: TLVRecord): string {
-  const typeName = TLV_NAMES[record.type] ?? `0x${record.type.toString(16).padStart(2, '0')}`;
-  return `${typeName}: ${decodeValue(record.type, record.data)}`;
 }

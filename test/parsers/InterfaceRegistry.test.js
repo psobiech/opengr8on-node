@@ -64,7 +64,7 @@ describe('InterfaceRegistry', () => {
 
     it('feature has correct fields', { skip: registry === null ? 'device-interfaces dir not found' : false }, () => {
       const vclu = registry.getCLU(0x13, 0x1, 0x3, 0xAA55AA);
-      const uptime = vclu.interface.features.find(f => f.name === 'Uptime');
+      const uptime = vclu.interface.features.find(feature => feature.name === 'Uptime');
       assert.ok(uptime, 'Uptime feature not found');
       assert.equal(uptime.type, 'num');
       assert.equal(uptime.get, true);
@@ -74,7 +74,7 @@ describe('InterfaceRegistry', () => {
 
     it('feature with enum has enumValues', { skip: registry === null ? 'device-interfaces dir not found' : false }, () => {
       const vclu = registry.getCLU(0x13, 0x1, 0x3, 0xAA55AA);
-      const state = vclu.interface.features.find(f => f.name === 'State');
+      const state = vclu.interface.features.find(feature => feature.name === 'State');
       assert.ok(state, 'State feature not found');
       assert.ok(state.enumValues !== null, 'enumValues should be set');
       assert.equal(state.enums.length, 7);

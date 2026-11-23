@@ -28,11 +28,11 @@ const CONTENT_TYPES: Partial<Record<HttpType, string>> = {
 
 export function httpTypeFromContentType(contentType: string | null | undefined): HttpType {
   if (!contentType) return HTTP_TYPE.NONE;
-  const lc = contentType.toLowerCase();
-  if (lc.startsWith('application/json') || lc.startsWith('text/json')) return HTTP_TYPE.JSON;
-  if (lc.startsWith('application/xml') || lc.startsWith('text/xml')) return HTTP_TYPE.XML;
-  if (lc.startsWith('text/plain')) return HTTP_TYPE.TEXT;
-  if (lc.startsWith('application/x-www-form-urlencoded')) return HTTP_TYPE.FORM_DATA;
+  const lowerContentType = contentType.toLowerCase();
+  if (lowerContentType.startsWith('application/json') || lowerContentType.startsWith('text/json')) return HTTP_TYPE.JSON;
+  if (lowerContentType.startsWith('application/xml') || lowerContentType.startsWith('text/xml')) return HTTP_TYPE.XML;
+  if (lowerContentType.startsWith('text/plain')) return HTTP_TYPE.TEXT;
+  if (lowerContentType.startsWith('application/x-www-form-urlencoded')) return HTTP_TYPE.FORM_DATA;
   return HTTP_TYPE.OTHER;
 }
 
@@ -75,15 +75,15 @@ export function parseBody(type: HttpType, raw: string | Buffer): LuaLike {
 
 export function urlDecodeQuery(query: string | null | undefined): Record<string, string> {
   if (!query) return {};
-  const q = query.startsWith('?') ? query.slice(1) : query;
+  const queryString = query.startsWith('?') ? query.slice(1) : query;
   const result: Record<string, string> = {};
-  for (const part of q.split('&')) {
+  for (const part of queryString.split('&')) {
     if (!part) continue;
-    const eq = part.indexOf('=');
-    if (eq === -1) {
+    const separatorIdx = part.indexOf('=');
+    if (separatorIdx === -1) {
       result[decodeURIComponent(part)] = '';
     } else {
-      result[decodeURIComponent(part.slice(0, eq))] = decodeURIComponent(part.slice(eq + 1));
+      result[decodeURIComponent(part.slice(0, separatorIdx))] = decodeURIComponent(part.slice(separatorIdx + 1));
     }
   }
   return result;
@@ -92,7 +92,7 @@ export function urlDecodeQuery(query: string | null | undefined): Record<string,
 export function urlEncodeObject(obj: Record<string, string> | LuaLike): string {
   if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) return '';
   return Object.entries(obj as Record<string, unknown>)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v ?? ''))}`)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value ?? ''))}`)
     .join('&');
 }
 
@@ -106,20 +106,20 @@ function parseXml(xml: string): LuaLike {
   }
 }
 
-function xmlToLuaLike(v: unknown): LuaLike {
-  if (v === null || v === undefined) return null;
-  if (typeof v === 'boolean') return v;
-  if (typeof v === 'number') return v;
-  if (typeof v === 'string') return v;
-  if (Array.isArray(v)) return (v as unknown[]).map(xmlToLuaLike) as LuaLike[];
-  if (typeof v === 'object') {
+function xmlToLuaLike(node: unknown): LuaLike {
+  if (node === null || node === undefined) return null;
+  if (typeof node === 'boolean') return node;
+  if (typeof node === 'number') return node;
+  if (typeof node === 'string') return node;
+  if (Array.isArray(node)) return (node as unknown[]).map(xmlToLuaLike) as LuaLike[];
+  if (typeof node === 'object') {
     const result: Record<string, LuaLike> = {};
-    for (const [k, child] of Object.entries(v as Record<string, unknown>)) {
-      result[k.replace(/^[^:]+:/, '')] = xmlToLuaLike(child);
+    for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
+      result[key.replace(/^[^:]+:/, '')] = xmlToLuaLike(child);
     }
     return result;
   }
-  return String(v);
+  return String(node);
 }
 
 export abstract class HttpObject extends VirtualObject {

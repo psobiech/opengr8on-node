@@ -74,13 +74,13 @@ export class MqttTopic extends VirtualObject {
       if (!this._messageHandlerRegistered) {
         this._messageHandlerRegistered = true;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (client as any).on('message', (t: string, payload: Buffer) => {
-          this._onMessage(t, payload);
+        (client as any).on('message', (messageTopic: string, payload: Buffer) => {
+          this._onMessage(messageTopic, payload);
         });
       }
       return true;
-    } catch (e) {
-      console.error(`[${this.name}] subscribe error:`, e);
+    } catch (error) {
+      console.error(`[${this.name}] subscribe error:`, error);
       return false;
     }
   }
@@ -94,8 +94,8 @@ export class MqttTopic extends VirtualObject {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (client as any).unsubscribe(topic);
       return true;
-    } catch (e) {
-      console.error(`[${this.name}] unsubscribe error:`, e);
+    } catch (error) {
+      console.error(`[${this.name}] unsubscribe error:`, error);
       return false;
     }
   }
@@ -121,8 +121,8 @@ export class MqttTopic extends VirtualObject {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (client as any).publish(topic, payload);
       return true;
-    } catch (e) {
-      console.error(`[${this.name}] publish error:`, e);
+    } catch (error) {
+      console.error(`[${this.name}] publish error:`, error);
       return false;
     }
   }
@@ -156,7 +156,7 @@ export class MqttTopic extends VirtualObject {
     if (entry == null) return;
 
     void this._processMessage(entry).catch(
-      (e) => console.error(`[${this.name}] message handler error:`, e),
+      (error) => console.error(`[${this.name}] message handler error:`, error),
     );
   }
 

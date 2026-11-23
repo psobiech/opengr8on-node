@@ -31,6 +31,80 @@ export interface CluCliArgs {
   outDir: string;
 }
 
+export async function runCluCli(argv: string[]): Promise<number> {
+  let args: CluCliArgs;
+  try {
+    args = parseCluCliArgs(argv);
+  } catch (error) {
+    process.stderr.write(`Error: ${(error as Error).message}\n\n${CLU_CLI_USAGE}\n`);
+    return 2;
+  }
+
+  const clus = readProjectClus(args.ompFile);
+  if (args.command === 'list') {
+    for (const projectClu of clus) process.stdout.write(`${projectClu.name}\tserial=${projectClu.serial}\tip=${projectClu.ipAddress}\n`);
+    return 0;
+  }
+
+  const clu = findProjectClu(clus, args.clu!);
+  if (!clu) {
+    process.stderr.write(`Error: CLU not found: ${args.clu}. Known: ${clus.map(projectClu => projectClu.name).join(', ')}\n`);
+    return 1;
+  }
+  const client = projectCluClient(clu, args.localAddress, args.cluPort);
+
+  switch (args.command) {
+    case 'alive': {
+      const aliveResponse = await client.checkAlive();
+      log(`${clu.name} checkAlive: ${aliveResponse ?? 'no answer'}`);
+      return aliveResponse ? 0 : 1;
+    }
+    case 'reset': {
+      if (args.delayMs) await new Promise(resolveDelay => setTimeout(resolveDelay, args.delayMs));
+      const startedAt = Date.now();
+      log(`req_reset -> ${clu.name} ${clu.ipAddress}`);
+      const ok = await client.reset(args.waitMs);
+      log(ok ? `${clu.name} alive again after ${Date.now() - startedAt} ms` : `${clu.name} not alive within ${args.waitMs} ms`);
+      return ok ? 0 : 1;
+    }
+    case 'refresh': {
+      if (args.delayMs) await new Promise(resolveDelay => setTimeout(resolveDelay, args.delayMs));
+      const startedAt = Date.now();
+      log(`req_refresh_modules -> ${clu.name} ${clu.ipAddress}`);
+      const response = await client.refreshModules(args.waitMs);
+      log(response ? `${response} after ${Date.now() - startedAt} ms` : `${clu.name}: no resp_refresh_modules within ${args.waitMs} ms`);
+      return response ? 0 : 1;
+    }
+    case 'fetch': {
+      mkdirSync(args.outDir, { recursive: true });
+      const started = await client.startTFTPdServer();
+      if (!started) {
+        process.stderr.write(`Error: ${clu.name} ${started === false ? 'refused to start TFTPd (CLU in lockdown?)' : 'did not answer the TFTPd start'}\n`);
+        return 1;
+      }
+      let failed = 0;
+      try {
+        for (const remote of args.files) {
+          const localPath = join(args.outDir, localNameFor(remote));
+          try {
+            const downloadedPath = await client.downloadFile(remote, localPath);
+            log(downloadedPath ? `${remote} -> ${downloadedPath}` : `${remote}: not found`);
+            failed += downloadedPath ? 0 : 1;
+          } catch (error) {
+            // A real CLU answers a missing file with "TFTP error 0: TFTP Server Failure".
+            log(`${remote}: ${(error as Error).message}`);
+            failed++;
+          }
+        }
+      } finally {
+        await client.stopTFTPdServer();
+      }
+      return failed ? 1 : 0;
+    }
+  }
+  return 2;
+}
+
 /** Parses clu-cli arguments; throws an Error with a message for the user on bad input. */
 export function parseCluCliArgs(argv: string[]): CluCliArgs {
   const { values, positionals } = parseArgs({
@@ -52,21 +126,15 @@ export function parseCluCliArgs(argv: string[]): CluCliArgs {
   if (command !== 'list' && !values['local-address']) throw new Error('--local-address required');
   if (command !== 'list' && !clu) throw new Error(`${command}: <clu> required`);
   if (command === 'fetch' && files.length === 0) throw new Error('fetch: at least one remote file required');
-  const num = (v: string | undefined, def: number, flag: string) => {
-    if (v === undefined) return def;
-    const n = Number(v);
-    if (!Number.isFinite(n) || n < 0) throw new Error(`${flag}: not a number: ${v}`);
-    return n;
-  };
   return {
     ompFile: resolve(values['omp-file']),
     localAddress: values['local-address'] ?? '',
-    cluPort: num(values['clu-port'], 1234, '--clu-port'),
+    cluPort: parseNonNegativeNumber(values['clu-port'], 1234, '--clu-port'),
     command,
     clu: clu ?? null,
     files,
-    delayMs: num(values.delay, 0, '--delay'),
-    waitMs: num(values.wait, command === 'refresh' ? 30000 : 60000, '--wait'),
+    delayMs: parseNonNegativeNumber(values.delay, 0, '--delay'),
+    waitMs: parseNonNegativeNumber(values.wait, command === 'refresh' ? 30000 : 60000, '--wait'),
     outDir: resolve(values.out ?? '.'),
   };
 }
@@ -76,78 +144,13 @@ export function localNameFor(remote: string): string {
   return remote.split(/[\\/]/).pop()!.replace(/^[a-z]:/i, '') || 'file';
 }
 
-const log = (msg: string) => process.stdout.write(`${new Date().toISOString()} ${msg}\n`);
+function parseNonNegativeNumber(rawValue: string | undefined, defaultValue: number, flag: string): number {
+  if (rawValue === undefined) return defaultValue;
+  const parsedNumber = Number(rawValue);
+  if (!Number.isFinite(parsedNumber) || parsedNumber < 0) throw new Error(`${flag}: not a number: ${rawValue}`);
+  return parsedNumber;
+}
 
-export async function runCluCli(argv: string[]): Promise<number> {
-  let args: CluCliArgs;
-  try {
-    args = parseCluCliArgs(argv);
-  } catch (e) {
-    process.stderr.write(`Error: ${(e as Error).message}\n\n${CLU_CLI_USAGE}\n`);
-    return 2;
-  }
-
-  const clus = readProjectClus(args.ompFile);
-  if (args.command === 'list') {
-    for (const c of clus) process.stdout.write(`${c.name}\tserial=${c.serial}\tip=${c.ipAddress}\n`);
-    return 0;
-  }
-
-  const clu = findProjectClu(clus, args.clu!);
-  if (!clu) {
-    process.stderr.write(`Error: CLU not found: ${args.clu}. Known: ${clus.map(c => c.name).join(', ')}\n`);
-    return 1;
-  }
-  const client = projectCluClient(clu, args.localAddress, args.cluPort);
-
-  switch (args.command) {
-    case 'alive': {
-      const r = await client.checkAlive();
-      log(`${clu.name} checkAlive: ${r ?? 'no answer'}`);
-      return r ? 0 : 1;
-    }
-    case 'reset': {
-      if (args.delayMs) await new Promise(r => setTimeout(r, args.delayMs));
-      const t0 = Date.now();
-      log(`req_reset -> ${clu.name} ${clu.ipAddress}`);
-      const ok = await client.reset(args.waitMs);
-      log(ok ? `${clu.name} alive again after ${Date.now() - t0} ms` : `${clu.name} not alive within ${args.waitMs} ms`);
-      return ok ? 0 : 1;
-    }
-    case 'refresh': {
-      if (args.delayMs) await new Promise(r => setTimeout(r, args.delayMs));
-      const t0 = Date.now();
-      log(`req_refresh_modules -> ${clu.name} ${clu.ipAddress}`);
-      const resp = await client.refreshModules(args.waitMs);
-      log(resp ? `${resp} after ${Date.now() - t0} ms` : `${clu.name}: no resp_refresh_modules within ${args.waitMs} ms`);
-      return resp ? 0 : 1;
-    }
-    case 'fetch': {
-      mkdirSync(args.outDir, { recursive: true });
-      const started = await client.startTFTPdServer();
-      if (!started) {
-        process.stderr.write(`Error: ${clu.name} ${started === false ? 'refused to start TFTPd (CLU in lockdown?)' : 'did not answer the TFTPd start'}\n`);
-        return 1;
-      }
-      let failed = 0;
-      try {
-        for (const remote of args.files) {
-          const out = join(args.outDir, localNameFor(remote));
-          try {
-            const got = await client.downloadFile(remote, out);
-            log(got ? `${remote} -> ${got}` : `${remote}: not found`);
-            failed += got ? 0 : 1;
-          } catch (e) {
-            // A real CLU answers a missing file with "TFTP error 0: TFTP Server Failure".
-            log(`${remote}: ${(e as Error).message}`);
-            failed++;
-          }
-        }
-      } finally {
-        await client.stopTFTPdServer();
-      }
-      return failed ? 1 : 0;
-    }
-  }
-  return 2;
+function log(message: string): void {
+  process.stdout.write(`${new Date().toISOString()} ${message}\n`);
 }

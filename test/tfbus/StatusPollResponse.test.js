@@ -77,8 +77,8 @@ describe('parseStatusPoll', () => {
     const remainingLen = tlvPayload.length + 1;
     const header = Buffer.from([0xAA, 0x00, remainingLen]);
     let xor = 0;
-    for (const b of header) xor ^= b;
-    for (const b of tlvPayload) xor ^= b;
+    for (const byte of header) xor ^= byte;
+    for (const byte of tlvPayload) xor ^= byte;
     const rxFrame = Buffer.concat([header, tlvPayload, Buffer.from([xor])]);
     const parsed = parseRxFrame(rxFrame);
     assert.ok(parsed !== null);
@@ -100,27 +100,27 @@ describe('parseTemperatureCelsius', () => {
 
 describe('parseButtonEvent', () => {
   it('VAL=0 → button 0, ON_CHANGE', () => {
-    const e = parseButtonEvent(0);
-    assert.equal(e.buttonIndex, 0);
-    assert.equal(e.eventId, ButtonEvent.ON_CHANGE);
+    const buttonEvent = parseButtonEvent(0);
+    assert.equal(buttonEvent.buttonIndex, 0);
+    assert.equal(buttonEvent.eventId, ButtonEvent.ON_CHANGE);
   });
 
   it('VAL=7 → button 1, ON_CHANGE', () => {
-    const e = parseButtonEvent(7);
-    assert.equal(e.buttonIndex, 1);
-    assert.equal(e.eventId, ButtonEvent.ON_CHANGE);
+    const buttonEvent = parseButtonEvent(7);
+    assert.equal(buttonEvent.buttonIndex, 1);
+    assert.equal(buttonEvent.eventId, ButtonEvent.ON_CHANGE);
   });
 
   it('VAL=24 → button 3, ON_SHORT_PRESS', () => {
     // BUTTON_04 (index 3), ON_SHORT_PRESS (id 3): 3*7+3=24
-    const e = parseButtonEvent(24);
-    assert.equal(e.buttonIndex, 3);
-    assert.equal(e.eventId, ButtonEvent.ON_SHORT_PRESS);
+    const buttonEvent = parseButtonEvent(24);
+    assert.equal(buttonEvent.buttonIndex, 3);
+    assert.equal(buttonEvent.eventId, ButtonEvent.ON_SHORT_PRESS);
   });
 
   it('VAL=27 → button 3, ON_CLICK (last event of BUTTON_04)', () => {
-    const e = parseButtonEvent(27);
-    assert.equal(e.buttonIndex, 3);
-    assert.equal(e.eventId, ButtonEvent.ON_CLICK);
+    const buttonEvent = parseButtonEvent(27);
+    assert.equal(buttonEvent.buttonIndex, 3);
+    assert.equal(buttonEvent.eventId, ButtonEvent.ON_CLICK);
   });
 });

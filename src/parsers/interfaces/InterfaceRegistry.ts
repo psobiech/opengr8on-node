@@ -58,6 +58,8 @@ export interface ParsedMethod {
   return?: string;
   unit?: string;
   resKey?: string;
+  /** XML `set` attribute: fixed argument OM passes to execute(index, …), e.g. the LED command of LedSwitchOn */
+  fixedArgument?: string;
   params: ParsedMethodParam[];
 }
 
@@ -327,6 +329,7 @@ function parseMethod(methodNode: XmlNode): ParsedMethod {
     return: methodNode['@_return'] as string | undefined,
     unit: methodNode['@_unit'] as string | undefined,
     resKey: desc?.['@_resKey'] as string | undefined,
+    fixedArgument: methodNode['@_set'] as string | undefined,
     params: toArray(methodNode['param']).map(paramNode => ({
       name: paramNode['@_name'] as string,
       type: paramNode['@_type'] as string,

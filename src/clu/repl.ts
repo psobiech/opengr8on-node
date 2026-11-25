@@ -17,7 +17,15 @@ export interface CluReplOptions {
 }
 
 interface Feature { name: string; index: number; get: boolean; set: boolean; }
-interface Method  { name: string; index: number; params: Array<{ name: string }>; }
+interface Method  {
+  name: string;
+  index: number;
+  /** 'set' -> obj:set(index, value), 'execute' -> obj:execute(index, …) */
+  call: string;
+  /** Fixed argument from the interface XML (`set` attribute), used when the method takes none */
+  fixedArgument?: string;
+  params: Array<{ name: string }>;
+}
 
 interface ObjectEntry {
   /** OMP display name, used in Lua scripts (e.g. LAMPA_KUCHNIA) */
@@ -276,10 +284,7 @@ export async function runCluRepl(options: CluReplOptions): Promise<void> {
     // Try as method name
     const method = obj.methods.find(candidate => candidate.name.toLowerCase() === action.toLowerCase());
     if (method) {
-      const params = actionArgs.join(', ');
-      const script = params
-        ? `${obj.nameOnClu}:execute(${method.index}, ${params})`
-        : `${obj.nameOnClu}:execute(${method.index})`;
+      const script = methodScript(obj.nameOnClu, method, actionArgs);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       const result = await clu.client.execute(script) as string | null;
       process.stdout.write(`  => ${result ?? 'nil'}\n`);
@@ -503,4 +508,15 @@ function resolveIface(interfaceRegistry: any, ioRes: Map<string, IoResEntry>, ty
     }
   }
   return typeMap.get(typeName) ?? { features: [], methods: [] };
+}
+
+/**
+ * Lua call of a method, as OM generates it: `call="set"` methods write their feature
+ * (obj:set(index, value)); `call="execute"` methods without arguments pass the XML `set`
+ * attribute (e.g. LedSwitchOn -> obj:execute(1, 2), 2 being the LED command).
+ */
+function methodScript(nameOnClu: string, method: Method, actionArgs: string[]): string {
+  const callType = method.call === 'set' ? 'set' : 'execute';
+  const args = actionArgs.length ? actionArgs : method.fixedArgument != null ? [method.fixedArgument] : [];
+  return `${nameOnClu}:${callType}(${[String(method.index), ...args].join(', ')})`;
 }

@@ -80,7 +80,9 @@ All values match `PAN7540:set(10..21, …)` in the real OM.LUA, in the same orde
 
 **Real CLU artifact**: the gesture-icon DISPLAY_BLOCKs reuse one buffer without clearing it, so the padding contains leftovers of earlier names (e.g. `00 03 "right" 00… "up"`). The panel evidently ignores bytes after the terminating NUL.
 
-**Not decoded yet**: how non-empty button labels/icons and page content (type, name, slot objects) are encoded. Every frame above carried empty values. Capture a config with labels and a Buttons page to decode them.
+**Button labels**: Label / SetLabel go in the button's DISPLAY_BLOCK `0x30 [button, 0a, text…]` (text up to 15 characters, NUL padded).
+
+**Not decoded yet**: how non-empty button icons and page content (type, name, slot objects) are encoded. Every frame above carried empty values. Capture a config with icons and a Buttons page to decode them.
 
 **Poll replies in this capture** (3 panels, 60 s): the panels answered STATUS_POLL with a bare ACK `AA 00 01 AB` almost every time, both before and after a full power cycle of the installation (CLU and modules) (~383 of 384 polls in steady state). The non-TLV 13-byte bitmask frame (`AA 00 0E 00 00 00 00 cf 00 70 01 00 00 00 87 01 …`) appeared only on the first polls after boot and about once more per minute. This contradicts the "never bare ACK" note below, so the panel firmware or its mode may differ between installations.
 
@@ -308,11 +310,27 @@ set/index methods: SetMode(set=1), SetHoldDelay(set=2), SetHoldInterval(set=3)
 | 27 | SetNextPage | — |
 | 28 | SetPrevPage | — |
 | 29 | Draw | — |
+| 30 | DrawBox | x, y, w, h, color |
 
-Wire encoding (TFBUS_CMD `0x31`, sub-cmd byte), from the real CLU's PANEL method table
-(firmware.bin `0x1504c`, function pointers +0xc000): SwitchOnDisplay → `00`, ShowButtons →
-`03 00 00 00 00`, ClearScreen → `04`, PrintText → `0a [x y font text…]`, DisplayContent → `09`,
-SetBeep → `0f …`, Draw → `19`.
+Wire encoding (TFBUS_CMD `0x31`: sub-cmd byte, then data, padded to 22 bytes):
+
+| Method | Sub-cmd | Data |
+|--------|---------|------|
+| SwitchOnDisplay | `00` | — |
+| ShowButtons | `03` | `00 00 00 00` |
+| ClearScreen | `04` | — |
+| DrawLine | `06` | x y xe ye color (1 byte each) |
+| DrawPoint | `07` | x y color |
+| DrawIcon | `08` | x y filename (16 bytes, NUL padded) `00` |
+| DisplayContent | `09` | — |
+| PrintText | `0a` | x y font text (16 bytes, NUL padded) `00` |
+| PrintFloat | `0a` | the CLU formats the number (precision 0–2) and sends it as PrintText |
+| SetBeep | `0f` | freq, duration, volume (u16 LE each) |
+| SetPageNr | `10` | nr (1 byte; same sub-cmd as the PageNr register) |
+| SetNextPage | `17` | — |
+| SetPrevPage | `18` | — |
+| Draw | `19` | — |
+| DrawBox | `1b` | x y w h color |
 
 set methods: SetGestureMode(15), SetGestureSens(16), SetPageDisplayMode(18), SetButtonsLEDMode(19), SetPageControlMode(20), SetGestureDisplayMode(21), SetProximitySens(10), SetProximityTimeout(11), SetBuzzerValue(13)
 
